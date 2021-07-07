@@ -1,0 +1,194 @@
+start time: 1145 Wednesday 7JUL
+
+submitter:
+	command line application (Python3)
+	submits jobs
+	can also send the shut down message
+	must include a -n flag
+		positional arguments
+			comma separated range of numbers
+			singular or range separated by '-'
+			example: 3,7-9,45000 --> {3, 7, 8, 9, 45000}
+			must fail if number given is out of range [0, 2^32)
+		operations chain
+			comma separated list of operations
+			
+			operation	format		example
+			ADD:		+operand	+6
+			SUBR:		-operand	-13
+			SUBL:		operand-	23-
+			AND:		&operand	&10090
+			OR:		|operand	|45777
+			XOR:		^operand	^22333
+			NOT:		~		~
+			ROLR:		=>>operand	=>>31
+			ROLL:		=<<operand	=<<12
+			example: +4,-47,~,=<<10,2020-
+			this means an opchain that adds 4, subtracts 47, bitwise NOT's,
+			rolls left 10 bits, and subtracts the results from 2020
+			
+		when submitting jobs, the submitter must print the following:
+			a job ID for the new job that was submitted
+	when shutting down the scheduler, include the -s with no other arguments
+	written in Python3.5 or above
+	file is called submitter.py
+	
+scheduler:
+	written in C
+	accepts jobs, handing out work units, and provides status updates over the network
+	will listen on one port specified as a positional command line argument
+	entry point named scheduler.c
+	new thread for each connection
+	multiple simultaneous jobs
+	accepts new jobs, and hands out work units for that job
+	recovers from a worker crashing or disconnecting during computation
+	fully implements the following protocol:
+		Version (always = 1)
+		Operation:
+			0: SUBMIT_JOB job submission
+			3: QUERY_WORK Used by worker to request work
+			4: SUBMIT_WORK Used by worker to submit results of work
+			5: SHUTDOWN trigger shutdown of the scheduler
+			Offset 8 (size varies): OpData Described in detail for each operation below
+		Payload (opdata)
+			num_operations (4 bytes): number of operations in the chain
+			operation_chain (num_operations * 8 bytes): Chain of operations.
+			following are the operations (4 bytes):
+				0 ADD: 	add number with operand
+				1 SUBR:	subtract operant from number
+				2 SUBL: subtract number from operand
+				3 AND:	bitwise AND of number and operand
+				4 OR:	bitwise OR of number and operand
+				5 XOR:	bitwise XOR of number and operand
+				6 NOT:	bitwise NOT of number. Operand is ignored
+				7 ROLR:	bitwise roll (shift) right of number by operand bits
+				8 ROLL: bitwise roll (shift) left of number by operand bits
+				- operand (4 bytes): operand for operation
+			num_iterations (4 bytes): always 1
+			num_items (4 bytes): number of items in list to be computed
+			items (num_items * 4 bytes) list of items to compute results on
+	complies with scheduler auto discovery protocol:
+		the scheduler must listen on port 4545
+		the submitter or worker must send a broadcast message to port 4545
+		once a broadcast is received, the scheduler replies with a 2 byte message of the port
+		to connect to in network byte order
+		the submitter or worker receive the message from the scheduler and connect
+		setsockopt() must be called on the broadcast socket with the SO_BROADCAST option. 			Second there is no such thing as TCP broadcast. Lastly, sendto() and recvfrom() are 			your friend.
+	does not rely on hardcoded IP addresses anywhere
+	responds to a shutdown command by releasing all resources and terminating execution. Not 		implementing this will likely result in points docked for memory/file descriptor leaks
+	
+worker:
+	the worker is responsible for computing results
+	should time-out after failing to connect to the scheduler within 10 seconds
+	there should be multiple workers running at the same time
+	worker must auto discover the scheduler based upon the UDP broadcasts received at startup 		(see above auto discovery protocol)
+	must connect to the scheduler's TCP port to request and return work
+	the worker should run indefinitely unless stopped on the command line or a disconnection from 		the scheduler
+	
+Performance measures:
+	written in C and Python3.5 or above
+	entry points named c_worker and worker.py respectively
+	pulls and returns results from the Scheduler via the TCP protocol
+	gives correct results for work units assigned
+	compiles with scheduler auto discovery protocol specified above
+	does not rely on hardcoded ip addresses anywhere
+	
+Wire Protocol:
+	communication between the scheduler and the workers and submitter must be followed as 		outlined below for the automated tests to work correctly	
+	Sequence Diagram:
+		submitter		scheduler		worker
+		Work Loop:
+		SUBMIT_JOB message	QUERY_WORK message
+		----------------------> <-----------------------
+					QUERY_WORK response
+					----------------------->
+								|
+								|
+								|
+								|
+								|
+								|
+					SUBMIT_WORK message	|
+					<-----------------------|
+								|
+					QUERY_WORK message	|
+					<-----------------------|
+		-------------------------------------------------
+		
+TCP Submitter/Worker:
+	all integers are transferred in network byte order
+	all messages to the scheduler have the same 8 byte header:
+		Offset 0 (4 bytes): Version of Protocol (always 1)
+		Offset 4 (4 bytes): Operation (from one of the above defined operations)
+			0: SUBMIT_JOB: 	job submission
+			3: QUERY_WORK: 	used by the workers to request work
+			4: SUBMIT_WORK:	used by worker to submit results of work
+			5: SHUTDOWN:	trigger shutdown of the sceduler
+		payload (size varies):
+			opdata described above for each operation performed
+			
+SUBMIT_JOB Message:
+	used to submit a job
+	consists of a list of operations, the number of times to repeat the operation (always 1)
+	and a list of numbers to compute the operations on.
+	for each number in the list of numbers, the operation chain will be repeated once, where each
+	operation in the operations chain being performed and the output feeding the input of the 		next operation
+	num_operations (4 bytes): number of operations in the chain
+	operation_chain (num_operations * 8 bytes): chain of operations
+		each operation consists of the operations defined above
+		
+SUBMIT_JOB Response:
+	this message is sent in response to SUBMIT_JOB message
+	consists of a single JOB_ID
+	JOB_ID's are unsigned 32 bit integers chosen by the scheduler to uniquely represent a job
+	any positive 32 bit value other than 0 is valid
+	JOB_ID (4 bytes): id to refer to submitted job in QUERY_STATUS or QUERY_RESULTS messages
+	a JOB_ID of 0 shall be returned if the scheduler was unable to accept the job
+	
+QUERY_WORK Message:
+	this message is used by Workers to request work from the scheduler
+	it has no payload
+	
+QUERY_WORK Response:
+	this message is sent in response to a QUERY_WORK message
+	it consists of:
+		the initial number passed to the operation chain
+		the number of operations in the operation chain
+		the actual operation chain
+		the number of iterations required (always 1)
+		
+		initial_number (4 bytes): the initial number to enter the operation chain
+		num_operations (4 bytes): number of operations in the operation chain
+		operation_chain (num_operations * 8 bytes): chain of operations
+		num_iterations (4 bytes): always 1
+		
+SUBMIT_WORK Message:
+	this message is used by the workers to submit the results of work
+	it consists of only the result
+	result (4 bytes): result of the computation of work unit pulled with previous QUERY_WORK 				  request
+	
+SHUTDOWN Message:
+	this message is used by the submitter to signal a shutdown of the scheduler
+	it has no payload
+	Upon receipt of this message, the scheduler should shutdown correctly and shut down as soon 		as possible.
+	no leaking resources is more important than speed of shutdown
+	
+User Manual:
+	the user manual is a detailed document containing instructions on how to compile and run the 		project
+	Requirements:
+		be present (must have a user manual)
+		include detailed usage instructions for all components of the tool
+		document edge cases where the tool will fail or give unexpected results
+		
+Presentation:
+	following completion of the project, the developer candidate must present and discuss the 		completed project with a panel of graders. The presentation will be an opportunity for the 		developer candidate to explain and defend the design and implementation of the project.
+	Presentation Requirements:
+		present and discuss the copleted project with a panel of graders
+		demonstrate a thorough understanding of the project's design and implementation
+		
+Grading:
+	Automatic Failure:
+		If any of the criteria for the individual program's performance measures marked as 			'must' are not met, the project exam is an automatic failure
+	Grading Criteria:
+		if all 'req' requirements are met then the project will be graded according to the 			rubric
+					
