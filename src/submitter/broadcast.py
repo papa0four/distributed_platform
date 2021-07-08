@@ -1,6 +1,5 @@
 import socket
 import struct
-import traceback    
 
 def broadcast_and_recv_working_port() -> int:
     '''
