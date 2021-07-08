@@ -1,9 +1,8 @@
 import socket
 import struct
-import traceback
-from typing import Tuple
+import traceback    
 
-def broadcast_udp() -> int:
+def broadcast_and_recv_working_port() -> int:
     '''
     This module handles the constant broadcast message from the client to the server
     The client sends a message to the scheduler to initiate conversation, giving the
@@ -18,29 +17,29 @@ def broadcast_udp() -> int:
     port = 31337
     broadcast = '127.255.255.255'
 
-    client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    client.setsockopt(socket.SOL_SOCKET, 
+    broadcast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    broadcast_socket.setsockopt(socket.SOL_SOCKET, 
                         socket.SO_REUSEADDR | socket.SO_BROADCAST, 1)
+    broadcast_socket.settimeout(5)
 
     while True:
         try:
-            client.sendto(b'', (broadcast, port))
+            broadcast_socket.sendto(b'', (broadcast, port))
         except IOError as send_err:
             print("send error", send_err)
-            traceback.print_exc()
-            break
+            return -1
 
         try:
-            data, temp = client.recvfrom(1024)
+            data, _ = broadcast_socket.recvfrom(1024)
             if None is data:
                 print("nothing received from scheduler")
             print("bytes received from scheduler")
-            object = struct.unpack('!6s', data)
-            port = object[0].decode('utf-8')
+            object = struct.unpack('>H', data)
+            port = object[0]
             return port
-        except IOError as recv_err:
-            print("recv error", recv_err)
-            traceback.print_exc()
+        except socket.error as error:
+            print("broadcast connection timedout...", error)
+            return -1
 
-scheduler = broadcast_udp()
-print("port ", scheduler)
+scheduler = broadcast_and_recv_working_port()
+print(scheduler)

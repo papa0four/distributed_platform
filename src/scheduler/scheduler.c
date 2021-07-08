@@ -1,30 +1,53 @@
-#include <stdio.h>
-#include <unistd.h>
-#include <string.h>
-#include <stdlib.h>
-#include <time.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <sys/un.h>
-#include <arpa/inet.h>
+#include "../includes/scheduler.h"
+#include "../includes/operations.h"
 
-#define BROADCAST_PORT 31337
-#define WORK_PORT
-#define MAX_BUFF       1024
-#define HOSTNAME_LEN   253
-
-int get_port()
+static uint16_t get_port(int argc, char ** argv)
 {
-    int min     = 31338;
-    int max     = 65535;
+    if (1 == argc)
+    {
+        errno = EINVAL;
+        perror("no command line arguments detected, exiting ...");
+        return 0;
+    }
 
-    srand(time(NULL));
-    return ((rand() % (max - min + 1)) + min);
+    int     opt     = 0;
+    char  * ptr     = NULL;
+    long    port    = 0;
+
+    while (-1 != (opt = getopt(argc, argv, ":p")))
+    {
+        switch (opt)
+        {
+            case 'p':
+                if (NULL == argv[optind])
+                {
+                    errno = EINVAL;
+                    perror("command line arguments array is NULL, exiting ...");
+                    return 0;
+                }
+
+                port = strtol(argv[optind], &ptr, BASE_10);
+                if ((MIN_PORT > port) || (MAX_PORT < port))
+                {
+                    errno = EINVAL;
+                    perror("invalid port entered");
+                    fprintf(stderr, "\tvalid port range: 31338 - 65535\n");
+                    return 0;
+                }
+                port = (uint16_t)port;
+                break;
+
+            case '?':
+                errno = EINVAL;
+                perror("invalid command line argument passed");
+                fprintf(stderr, "only valid cmdline argument:\n\t-p [specified port]\n");
+                break;
+        }
+    }
+    return port;
 }
 
-int main ()
+int main (int argc, char ** argv)
 {
     struct sockaddr_in scheduler = { 0 };
     struct sockaddr_in submitter = { 0 };
@@ -36,64 +59,68 @@ int main ()
     scheduler.sin_port          = htons(BROADCAST_PORT);
     scheduler_len               = sizeof(scheduler);
 
-    int     sockfd                  = 0;
-    int     reuse                   = 1;
-    int     bind_ret                = -1;
-    int     opt_ret                 = -1;
-    int     list_ret                = -1;
-    ssize_t bytes_recv              = 0;
-    ssize_t bytes_sent              = 0;
+    int         broadcast_socket    = 0;
+    int         reuse               = 1;
+    int         bind_ret            = -1;
+    int         opt_ret             = -1;
+    int         list_ret            = -1;
+    uint16_t    op_port             = 1;
+    ssize_t     bytes_recv          = 0;
+    ssize_t     bytes_sent          = 0;
 
-    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (0 == sockfd)
+    broadcast_socket = socket(AF_INET, SOCK_DGRAM, 0);
+    if (0 == broadcast_socket)
     {
         perror("socket");
         return EXIT_FAILURE;
     }
 
-    opt_ret = setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR | SO_BROADCAST, &reuse, sizeof(reuse));
+    opt_ret = setsockopt(broadcast_socket, SOL_SOCKET, SO_REUSEADDR | SO_BROADCAST, &reuse, sizeof(reuse));
     if (-1 == opt_ret)
     {
         perror("setsockopt");
-        close(sockfd);
+        close(broadcast_socket);
         return EXIT_FAILURE;
     }
 
-    char msg[MAX_BUFF]          = { 0 };
-    char hostname[HOSTNAME_LEN] = { 0 };
-    int  hostname_ret           = 0;
+    char broadcast_msg[MAX_BUFF] = { 0 };
 
-    bind_ret = bind(sockfd, (const struct sockaddr *)&scheduler, scheduler_len);
+    bind_ret = bind(broadcast_socket, (const struct sockaddr *)&scheduler, scheduler_len);
     if (0 > bind_ret)
     {
         perror("bind");
         return EXIT_FAILURE;
     }
 
-    bytes_recv = recvfrom(sockfd, msg, MAX_BUFF, 0,
+    bytes_recv = recvfrom(broadcast_socket, broadcast_msg, MAX_BUFF, 0,
                          (struct sockaddr *)&submitter, &submitter_len);
     if (0 > bytes_recv)
     {
         perror("recvfrom");
-        close(sockfd);
+        close(broadcast_socket);
         return EXIT_FAILURE;
     }
 
-    printf("msg recv: %s\n", msg);
-    int port = get_port();
-    printf("port generated: %d\n", port);
-    char str_port[6] = { 0 };
-    sprintf(str_port, "%d", port);
+    printf("broadcast_msg recv: %s\n", broadcast_msg);
+    op_port = get_port(argc, argv);
+    if (0 == op_port)
+    {
+        close(broadcast_socket);
+        return EXIT_FAILURE;
+    }
+    printf("port generated: %hu\n", op_port);
+    op_port = htons(op_port);
 
-    bytes_sent = sendto(sockfd, str_port, 6, 0, (struct sockaddr *)&submitter, submitter_len);
+    bytes_sent = sendto(broadcast_socket, &op_port, sizeof(uint16_t), 0, 
+                        (struct sockaddr *)&submitter, submitter_len);
     if (0 >= bytes_sent)
     {
         perror("sendto");
-        close(sockfd);
+        close(broadcast_socket);
         return EXIT_FAILURE;
     }
     printf("scheduler sent %ld bytes\n", bytes_sent);
-    close(sockfd);
+    close(broadcast_socket);
 
     return EXIT_SUCCESS;
 }
