@@ -10,7 +10,6 @@ if __name__ == "__main__" and __package__ is None:
     path.append(dir(path[0]))
     __package__ = "worker"
 
-# import modules.broadcast as bc
 import modules.connect_to_scheduler as cts
 
 cts.connect_to_scheduler()

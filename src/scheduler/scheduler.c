@@ -1,7 +1,19 @@
+#define _GNU_SOURCE
+
 #include "../includes/scheduler.h"
 #include "../includes/operations.h"
 
 volatile bool g_running = true;
+
+static void sigint_handler (int signo)
+{
+    if (SIGINT == signo)
+    {
+        char msg[MAX_BUFF] = "\nSIGINT (ctrl+c) caught.\nShutting down...";
+        fprintf(stderr, "%s\n", msg);
+        g_running = false;
+    }
+}
 
 static uint16_t get_port(int argc, char ** argv)
 {
@@ -75,14 +87,14 @@ static void * handle_broadcast (void * p_port)
     broadcast_socket = socket(AF_INET, SOCK_DGRAM, 0);
     if (0 == broadcast_socket)
     {
-        perror("socket");
+        perror("handle_broadcast - socket");
         return NULL;
     }
 
     opt_ret = setsockopt(broadcast_socket, SOL_SOCKET, SO_REUSEADDR | SO_BROADCAST, &reuse, sizeof(reuse));
     if (-1 == opt_ret)
     {
-        perror("handle_broadcast: setsockopt");
+        perror("handle_broadcast - setsockopt");
         close(broadcast_socket);
         return NULL;
     }
@@ -92,7 +104,7 @@ static void * handle_broadcast (void * p_port)
     bind_ret = bind(broadcast_socket, (const struct sockaddr *)&scheduler, scheduler_len);
     if (0 > bind_ret)
     {
-        perror("bind");
+        perror("handle_broadcast - bind");
         return NULL;
     }
 
@@ -115,7 +127,7 @@ static void * handle_broadcast (void * p_port)
                          (struct sockaddr *)&client, &client_len);
             if (0 > bytes_recv)
             {
-                perror("recvfrom");
+                perror("handle_broadcast - recvfrom");
                 close(broadcast_socket);
                 return NULL;
             }
@@ -127,16 +139,11 @@ static void * handle_broadcast (void * p_port)
                                 (struct sockaddr *)&client, client_len);
             if (0 >= bytes_sent)
             {
-                perror("sendto");
+                perror("broadcast_handler - sendto");
                 close(broadcast_socket);
                 return NULL;
             }
             printf("operational port sent: %hu\n", ntohs(*op_port));
-            printf("scheduler sent %ld bytes\n", bytes_sent);
-        }
-        else
-        {
-            break;
         }
 
         if (false == g_running)
@@ -152,13 +159,19 @@ static void * handle_broadcast (void * p_port)
 
 int main (int argc, char ** argv)
 {
+
+    struct sigaction handle_sigint = { 0 };
+    handle_sigint.sa_handler       = sigint_handler;
+    sigfillset(&handle_sigint.sa_mask);
+    handle_sigint.sa_flags         = 0;
+    sigaction(SIGINT, &handle_sigint, NULL);
+
     uint16_t    op_port         = 0;
     int         scheduler_fd    = 0;
     int         opt_ret         = 0;
     int         reuse           = 1;
     int         bind_ret        = -1;
     int         listen_ret      = -1;
-    int         accept_ret      = -1;
     ssize_t     bytes_recv      = 0;
     pthread_t   broadcast_thread;
     
@@ -183,14 +196,14 @@ int main (int argc, char ** argv)
     scheduler_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (0 == scheduler_fd)
     {
-        perror("driver: socket");
+        perror("driver - socket");
         return EXIT_FAILURE;
     }
 
     opt_ret = setsockopt(scheduler_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
     if (-1 == opt_ret)
     {
-        perror("driver: setsockopt");
+        perror("driver - setsockopt");
         close(scheduler_fd);
         return EXIT_FAILURE;
     }
@@ -198,7 +211,7 @@ int main (int argc, char ** argv)
     bind_ret = bind(scheduler_fd, (const struct sockaddr *)&scheduler, scheduler_len);
     if (0 > bind_ret)
     {
-        perror("driver: bind");
+        perror("driver - bind");
         close(scheduler_fd);
         return EXIT_FAILURE;
     }
@@ -206,29 +219,51 @@ int main (int argc, char ** argv)
     listen_ret = listen(scheduler_fd, BACKLOG);
     if (-1 == listen_ret)
     {
-        perror("driver: listen");
+        perror("driver - listen");
         close(scheduler_fd);
         return EXIT_FAILURE;
     }
 
-    accept_ret = accept(scheduler_fd, (struct sockaddr *)&scheduler, &scheduler_len);
-    if (-1 == accept_ret)
+    char    worker_buff[MAX_BUFF]       = { 0 };
+    int     client_array[MAX_CLIENTS]   = { 0 };
+    int     idx                         = 0;
+
+    while (g_running)
     {
-        perror("driver: accept");
-        close(scheduler_fd);
-        return EXIT_FAILURE;
-    }
+        client_array[idx] = accept(scheduler_fd, (struct sockaddr *)&scheduler, &scheduler_len);
+        if (-1 == client_array[idx])
+        {
+            perror("driver: accept");
+            close(scheduler_fd);
+            return EXIT_FAILURE;
+        }
+        
+        bytes_recv = recv(client_array[idx], worker_buff, MAX_BUFF, 0);
+        printf("server update: %s\n", worker_buff);
+        if (0 >= bytes_recv)
+        {
+            perror("driver - recv");
+            close(scheduler_fd);
+            return EXIT_FAILURE;
+        }
 
-    char worker_buff[MAX_BUFF] = { 0 };
-    bytes_recv = recv(accept_ret, worker_buff, MAX_BUFF, 0);
-    printf("worker_buff: %s\n", worker_buff);
-    if (0 >= bytes_recv)
+        if (MAX_CLIENTS == (idx + 1))
+        {
+            printf("max clients connected ... ");
+            break;
+        }
+
+        idx++;
+    }
+    
+    if (false == g_running)
     {
-        perror("driver: recv");
-        close(scheduler_fd);
-        return EXIT_FAILURE;
+        for (int iter = 0; iter < MAX_CLIENTS; iter++)
+        {
+            close(client_array[iter]);
+        }
     }
-
+    
     close(scheduler_fd);
 
     return EXIT_SUCCESS;    

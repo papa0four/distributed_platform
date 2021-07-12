@@ -14,18 +14,18 @@ import modules.broadcast as bc
 
 def connect_to_scheduler() -> None:
     serv_info = bc.broadcast_and_recv_working_port()
-    worker_fd = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    worker_fd.setsockopt(socket.SOL_SOCKET, 
+    conn_fd = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    conn_fd.setsockopt(socket.SOL_SOCKET, 
                         socket.SO_REUSEADDR, 1)
-    worker_fd.connect((serv_info))
-    hello = "connected to worker"
+    conn_fd.connect((serv_info))
+    hello = "client connected ..."
     try:
-        bytes_sent = worker_fd.send(hello.encode('utf-8'))
+        bytes_sent = conn_fd.send(hello.encode('utf-8'))
         if bytes_sent == 0:
             print("no bytes sent to scheduler")
         else:
-            print("hello sent")
+            print(f"connection made to scheduler via {serv_info[0]}:{serv_info[1]}")
     except IOError as send_err:
         print("send error", send_err)
-        worker_fd.close()
+        conn_fd.close()
         return

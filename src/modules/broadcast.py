@@ -38,7 +38,6 @@ def broadcast_and_recv_working_port() -> Tuple:
             data, sender = broadcast_socket.recvfrom(1024)
             if None is data:
                 print("nothing received from scheduler")
-            print("bytes received from scheduler")
             object = struct.unpack('>H', data)
             port = object[0]
             scheduler_info = (sender[0], port)

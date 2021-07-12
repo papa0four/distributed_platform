@@ -8,6 +8,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <signal.h>
 #include <pthread.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -26,6 +27,15 @@
 #define MAX_CLIENTS     5
 #define TV_TIMEOUT      5
 #define BACKLOG         3
+#define SIGINT          2
+
+/**
+ * @brief - a SIGINT handler to catch ctrl+c keyboard interrupt.
+ *          should trigger graceful safe teardown
+ * @param signo - an in value equal to a SIGINT keyboard interrupt '2'
+ * @return - N/A
+ */
+static void sigint_handler (int signo);
 
 /**
  * @brief - handle command line argument to receive a valid working
