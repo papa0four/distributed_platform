@@ -19,15 +19,5 @@ def connect_to_scheduler() -> int:
     conn_fd.setsockopt(socket.SOL_SOCKET, 
                         socket.SO_REUSEADDR, 1)
     conn_fd.connect((serv_info))
-    hello = "client connected ..."
-    try:
-        bytes_sent = conn_fd.send(hello.encode('utf-8'))
-        if bytes_sent == 0:
-            print("no bytes sent to scheduler")
-        else:
-            print(f"connection made to scheduler via {serv_info[0]}:{serv_info[1]}")
-            return (conn_fd)
-    except IOError as send_err:
-        print("send error", send_err)
-        conn_fd.close()
-        return -1
+    print(f"connection made to scheduler via {serv_info[0]}:{serv_info[1]}")
+    return conn_fd
