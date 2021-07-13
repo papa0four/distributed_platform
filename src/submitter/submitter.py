@@ -173,6 +173,7 @@ def handle_submitter() -> None:
     payload = create_payload(len(op_chain), op_chain, iterations, 
                 len(op_list), op_list)
     packet = header + payload
+    print(f"packet to send {packet}")
     try:
         bytes_sent = conn_fd.send(packet)
         if bytes_sent <= 0:
