@@ -1,9 +1,9 @@
 #include "../includes/work_queue.h"
 #include "../includes/scheduler.h"
 
-task_queue_t * tqueue_init()
+work_queue_t * tqueue_init()
 {
-    task_queue_t * p_new_queue = calloc(1, sizeof(task_queue_t));
+    work_queue_t * p_new_queue = calloc(1, sizeof(work_queue_t));
     if (NULL == p_new_queue)
     {
         errno = ENOMEM;
@@ -26,9 +26,9 @@ task_queue_t * tqueue_init()
     return p_new_queue;
 }
 
-bool enqueue_work (task_queue_t * p_tqueue, work_t * p_work)
+bool enqueue_work (work_queue_t * p_wqueue, work_t * p_work)
 {
-    if ((NULL == p_tqueue) || (NULL == p_work))
+    if ((NULL == p_wqueue) || (NULL == p_work))
     {
         errno = EINVAL;
         perror("could not enqueue - one or more parameters are NULL");
@@ -46,67 +46,67 @@ bool enqueue_work (task_queue_t * p_tqueue, work_t * p_work)
 
     p_new_node->work = p_work;
 
-    if (NULL == p_tqueue->head)
+    if (NULL == p_wqueue->head)
     {
-        p_tqueue->head = p_new_node;
-        p_tqueue->q_size += 1;
+        p_wqueue->head = p_new_node;
+        p_wqueue->q_size += 1;
         b_enqueued = true;
     }
     else
     {
-        if (1 == is_full(p_tqueue))
+        if (1 == is_full(p_wqueue))
         {
-            p_tqueue = resize_tqueue(p_tqueue);
+            p_wqueue = resize_tqueue(p_wqueue);
         }
-        queue_node_t * p_current = p_tqueue->head;
+        queue_node_t * p_current = p_wqueue->head;
         while (p_current->next)
         {
             p_current = p_current->next;
         }
         p_current->next = p_new_node;
-        p_tqueue->q_size += 1;
+        p_wqueue->q_size += 1;
         b_enqueued = true;
     }
     return b_enqueued;    
 }
 
-work_t * dequeue_work (task_queue_t * p_tqueue)
+work_t * dequeue_work (work_queue_t * p_wqueue)
 {
-    if ((NULL == p_tqueue) || (NULL == p_tqueue->head))
+    if ((NULL == p_wqueue) || (NULL == p_wqueue->head))
     {
         errno = EINVAL;
         perror("the queue or queue head are NULL");
         return NULL;
     }
 
-    queue_node_t * p_work_ret   = p_tqueue->head;
+    queue_node_t * p_work_ret   = p_wqueue->head;
     work_t       * p_work       = p_work_ret->work;
     
-    if (NULL == p_tqueue->head->next)
+    if (NULL == p_wqueue->head->next)
     {
-        p_tqueue->head = NULL;
+        p_wqueue->head = NULL;
     }
     else
     {
-        p_tqueue->head = p_tqueue->head->next;
+        p_wqueue->head = p_wqueue->head->next;
     }
 
-    p_tqueue->q_size -= 1;
+    p_wqueue->q_size -= 1;
     clean_memory(p_work_ret);
 
     return p_work;
 }
 
-ssize_t is_full (task_queue_t * p_tqueue)
+ssize_t is_full (work_queue_t * p_wqueue)
 {
-    if ((NULL == p_tqueue) || (NULL == p_tqueue))
+    if ((NULL == p_wqueue) || (NULL == p_wqueue))
     {
         errno = EINVAL;
         perror("queue pointer passed or queue head is NULL");
         return -1;
     }
 
-    if (p_tqueue->q_size == p_tqueue->capacity)
+    if (p_wqueue->q_size == p_wqueue->capacity)
     {
         return 1;
     }
@@ -114,16 +114,16 @@ ssize_t is_full (task_queue_t * p_tqueue)
     return 0;    
 }
 
-ssize_t is_empty (task_queue_t * p_tqueue)
+ssize_t is_empty (work_queue_t * p_wqueue)
 {
-    if (NULL == p_tqueue)
+    if (NULL == p_wqueue)
     {
         errno = EINVAL;
         perror("queue pointer passed is NULL");
         return -1;
     }
 
-    if (0 == p_tqueue->q_size)
+    if (0 == p_wqueue->q_size)
     {
         return 1;
     }
@@ -132,29 +132,29 @@ ssize_t is_empty (task_queue_t * p_tqueue)
     
 }
 
-ssize_t tqueue_len (task_queue_t * p_tqueue)
+ssize_t tqueue_len (work_queue_t * p_wqueue)
 {
-    if ((NULL == p_tqueue) || (NULL == p_tqueue->head))
+    if ((NULL == p_wqueue) || (NULL == p_wqueue->head))
     {
         errno = EINVAL;
         perror("queue pointer or queue head is NULL");
         return -1;
     }
 
-    return p_tqueue->q_size;
+    return p_wqueue->q_size;
 }
 
-task_queue_t * resize_tqueue (task_queue_t * p_tqueue)
+work_queue_t * resize_tqueue (work_queue_t * p_wqueue)
 {
-    if (NULL == p_tqueue)
+    if (NULL == p_wqueue)
     {
         errno = EINVAL;
         perror("queue pointer passed is NULL");
         return NULL;
     }
 
-    task_queue_t * p_bigger_queue = NULL;
-    p_bigger_queue = realloc(p_tqueue, (QUEUE_CAPACITY * 2) * sizeof(task_queue_t));
+    work_queue_t * p_bigger_queue = NULL;
+    p_bigger_queue = realloc(p_wqueue, (QUEUE_CAPACITY * 2) * sizeof(work_queue_t));
     if (NULL == p_bigger_queue)
     {
         errno = ENOMEM;
@@ -166,23 +166,23 @@ task_queue_t * resize_tqueue (task_queue_t * p_tqueue)
     return p_bigger_queue;
 }
 
-bool tqueue_destroy (task_queue_t * p_tqueue)
+bool tqueue_destroy (work_queue_t * p_wqueue)
 {
-    if (NULL == p_tqueue)
+    if (NULL == p_wqueue)
     {
         errno = EINVAL;
         perror("queue pointer is NULL, nothing to destroy");
         return false;
     }
 
-    if (1 == is_empty(p_tqueue))
+    if (1 == is_empty(p_wqueue))
     {
         printf("destroying task queue container\n");
-        clean_memory(p_tqueue);
+        clean_memory(p_wqueue);
         return true;
     }
 
-    queue_node_t * p_current = p_tqueue->head;
+    queue_node_t * p_current = p_wqueue->head;
     queue_node_t * p_temp    = NULL;
 
     while (p_current)
@@ -191,12 +191,12 @@ bool tqueue_destroy (task_queue_t * p_tqueue)
         p_current   = p_current->next;
 
         clean_memory(p_temp);
-        p_tqueue->q_size -= 1;
+        p_wqueue->q_size -= 1;
     }
-    p_tqueue->q_size    = 0;
-    p_tqueue->capacity  = 0;
+    p_wqueue->q_size    = 0;
+    p_wqueue->capacity  = 0;
 
-    clean_memory(p_tqueue);
+    clean_memory(p_wqueue);
     return true;
 }
 

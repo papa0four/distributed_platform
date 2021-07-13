@@ -27,13 +27,13 @@ typedef struct _queue_node_t
  * @member capacity - the overall size of the queue
  *                  NOTE: can be adjusted to accept more work
  */
-typedef struct _task_queue_t
+typedef struct _work_queue_t
 {
     queue_node_t  * p_nodes;
     queue_node_t  * head;
     size_t          q_size;
     size_t          capacity;
-} task_queue_t;
+} work_queue_t;
 
 /**
  * @brief - initial the overarching queue structure
@@ -42,7 +42,7 @@ typedef struct _task_queue_t
  * @param - N/A
  * @return - a pointer to the newly created queue structure
  */
-task_queue_t * tqueue_init ();
+work_queue_t * tqueue_init ();
 
 /**
  * @brief - used to add a new set of work instructions to the queue
@@ -50,7 +50,7 @@ task_queue_t * tqueue_init ();
  * @param p_work - a pointer to the work structure containing all instructions
  * @return - true upon successful addition of work, false on errors
  */
-bool enqueue_work (task_queue_t * p_tqueue, work_t * p_work);
+bool enqueue_work (work_queue_t * p_wqueue, work_t * p_work);
 
 /**
  * @brief - pop's a work instruction off the top of the queue,
@@ -59,7 +59,7 @@ bool enqueue_work (task_queue_t * p_tqueue, work_t * p_work);
  * @return - returns the work structure to be passed to the worker
  *           and free's the node structure, return's NULL on error
  */
-work_t * dequeue_work (task_queue_t * p_tqueue);
+work_t * dequeue_work (work_queue_t * p_wqueue);
 
 /**
  * @brief - checks to see if the current queue is full
@@ -67,7 +67,7 @@ work_t * dequeue_work (task_queue_t * p_tqueue);
  * @return - 1 if current queue->size == capacity, 0 if not 
  *           and -1 on error
  */
-ssize_t is_full (task_queue_t * p_tqueue);
+ssize_t is_full (work_queue_t * p_wqueue);
 
 /**
  * @brief - checks to see if current queue is empty
@@ -75,14 +75,14 @@ ssize_t is_full (task_queue_t * p_tqueue);
  * @return - 1 if current queue->size == 0, 0 if not
  *           and -1 on error
  */
-ssize_t is_empty (task_queue_t * p_tqueue);
+ssize_t is_empty (work_queue_t * p_wqueue);
 
 /**
  * @brief - checks the current length of the work queue
  * @param p_tqueue - a pointer to the overarching queue structure
  * @return - the value stored a p_tqueue->q_size, -1 on error
  */
-static ssize_t tqueue_len (task_queue_t * p_tqueue);
+static ssize_t tqueue_len (work_queue_t * p_wqueue);
 
 /**
  * @brief - helper function: used to dynamically resize the overall
@@ -91,7 +91,7 @@ static ssize_t tqueue_len (task_queue_t * p_tqueue);
  * @return - a pointer to the newly resized queue container, NULL
  *           on error
  */
-task_queue_t * resize_tqueue (task_queue_t * p_tqueue);
+work_queue_t * resize_tqueue (work_queue_t * p_wqueue);
 
 /**
  * @brief - eliminates current queue, free'ing all nodes and the
@@ -99,6 +99,6 @@ task_queue_t * resize_tqueue (task_queue_t * p_tqueue);
  * @param p_tqueue - a pointer to the overarching queue structure
  * @return - true upon proper tear down of the queue, false on error
  */
-bool tqueue_destroy (task_queue_t * p_tqueue);
+bool tqueue_destroy (work_queue_t * p_wqueue);
 
 #endif
