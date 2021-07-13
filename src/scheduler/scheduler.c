@@ -247,6 +247,15 @@ int main (int argc, char ** argv)
             return EXIT_FAILURE;
         }
 
+        bytes_recv = recv(client_array[idx], worker_buff, MAX_BUFF, 0);
+        printf("server update: %s\n", worker_buff);
+        if (0 >= bytes_recv)
+        {
+            perror("driver - recv");
+            close(scheduler_fd);
+            return EXIT_FAILURE;
+        }
+
         if (MAX_CLIENTS == (idx + 1))
         {
             printf("max clients connected ... ");
