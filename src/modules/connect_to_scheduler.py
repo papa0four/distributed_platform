@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
-import os
 import socket
+from typing import Tuple
+
 
 if __name__ == "__main__" and __package__ is None:
     from sys import path
@@ -12,7 +13,7 @@ if __name__ == "__main__" and __package__ is None:
 
 import modules.broadcast as bc
 
-def connect_to_scheduler() -> None:
+def connect_to_scheduler() -> int:
     serv_info = bc.broadcast_and_recv_working_port()
     conn_fd = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     conn_fd.setsockopt(socket.SOL_SOCKET, 
@@ -25,7 +26,8 @@ def connect_to_scheduler() -> None:
             print("no bytes sent to scheduler")
         else:
             print(f"connection made to scheduler via {serv_info[0]}:{serv_info[1]}")
+            return (conn_fd)
     except IOError as send_err:
         print("send error", send_err)
         conn_fd.close()
-        return
+        return -1

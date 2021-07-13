@@ -25,7 +25,7 @@ class Submit_Job:
         pass
 
     @staticmethod
-    def convert_to_bytes(data_to_pack: any) -> any:
+    def convert_to_bytes(data_to_pack: int) -> bytes:
         """
         docstring goes here
         """
@@ -48,6 +48,16 @@ class Submit_Work:
     docstring goes here
     """
 
+    def __init__(self):
+        """
+        docstring goes here
+        """
+        pass
+
+class Shutdown:
+    """
+    docstring goes here
+    """
     def __init__(self):
         """
         docstring goes here
