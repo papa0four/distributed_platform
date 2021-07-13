@@ -1,4 +1,4 @@
-#include "../includes/task_queue.h"
+#include "../includes/work_queue.h"
 #include "../includes/scheduler.h"
 
 task_queue_t * tqueue_init()
@@ -200,4 +200,4 @@ bool tqueue_destroy (task_queue_t * p_tqueue)
     return true;
 }
 
-/*** end task_queue.c ***/
+/*** end work_queue.c ***/
