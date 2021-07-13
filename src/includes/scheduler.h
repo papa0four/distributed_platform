@@ -18,16 +18,46 @@
 #include <sys/un.h>
 #include <arpa/inet.h>
 #include <errno.h>
+#include "operations.h"
 
 #define BROADCAST_PORT  31337
 #define MIN_PORT        31338
 #define MAX_PORT        65535
 #define MAX_BUFF        1024
+#define MAX_CLIENTS     100
 #define BASE_10         10
-#define MAX_CLIENTS     5
 #define TV_TIMEOUT      5
 #define BACKLOG         3
 #define SIGINT          2
+/**
+ * opchain struct
+ */
+typedef struct _opchain_t
+{
+    uint32_t operation;
+    uint32_t operand;
+    uint32_t opchain_sz;
+} opchain_t, * p_opchain;
+
+/**
+ * operand types
+ */
+typedef struct _operand_t
+{
+    uint32_t operand_num;
+    uint32_t operand_list_sz;
+} operand_t, * p_operand;
+
+/**
+ * struct info:
+ */
+typedef struct _computation_packet_t
+{
+    uint32_t    version;
+    uint32_t    operation;
+    opchain_t * op_chain;
+    operand_t * operands;
+} packet_t, * p_packet;
 
 /**
  * @brief - a SIGINT handler to catch ctrl+c keyboard interrupt.
