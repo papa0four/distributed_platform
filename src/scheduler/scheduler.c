@@ -62,33 +62,31 @@ static uint16_t get_port(int argc, char ** argv)
     return port;
 }
 
-static void * handle_broadcast (void * p_port)
+static struct sockaddr_in setup_scheduler ()
 {
-    struct sockaddr_in scheduler    = { 0 };
-    struct sockaddr_in client       = { 0 };
-
+    struct sockaddr_in scheduler = { 0 };
     memset((void *)&scheduler, 0, sizeof(scheduler));
+
     scheduler.sin_family            = AF_INET;
     scheduler.sin_addr.s_addr       = INADDR_ANY;
     scheduler.sin_port              = htons(BROADCAST_PORT);
 
-    socklen_t scheduler_len   = sizeof(scheduler);
-    socklen_t client_len      = sizeof(client);
+    return scheduler;
+}
 
+static int create_broadcast_socket (struct sockaddr_in scheduler)
+{
     int         broadcast_socket    = 0;
     int         reuse               = 1;
     int         bind_ret            = -1;
     int         opt_ret             = -1;
-    int         select_ret          = -1;
-    ssize_t     bytes_recv          = 0;
-    ssize_t     bytes_sent          = 0;
-    fd_set      read_fd;
+    socklen_t   scheduler_len       = sizeof(scheduler);
 
     broadcast_socket = socket(AF_INET, SOCK_DGRAM, 0);
     if (0 == broadcast_socket)
     {
         perror("handle_broadcast - socket");
-        return NULL;
+        return -1;
     }
 
     opt_ret = setsockopt(broadcast_socket, SOL_SOCKET, SO_REUSEADDR | SO_BROADCAST, &reuse, sizeof(reuse));
@@ -96,17 +94,32 @@ static void * handle_broadcast (void * p_port)
     {
         perror("handle_broadcast - setsockopt");
         close(broadcast_socket);
-        return NULL;
+        return -1;
     }
-
-    char broadcast_msg[MAX_BUFF] = { 0 };
 
     bind_ret = bind(broadcast_socket, (const struct sockaddr *)&scheduler, scheduler_len);
     if (0 > bind_ret)
     {
         perror("handle_broadcast - bind");
-        return NULL;
+        return -1;
     }
+
+    return broadcast_socket;
+}
+
+static void * handle_broadcast (void * p_port)
+{
+    struct sockaddr_in scheduler    = setup_scheduler();
+    struct sockaddr_in client       = { 0 };
+    char broadcast_msg[MAX_BUFF]    = { 0 };
+
+    socklen_t client_len      = sizeof(client);
+
+    int         select_ret          = -1;
+    ssize_t     bytes_recv          = 0;
+    ssize_t     bytes_sent          = 0;
+    fd_set      read_fd;
+    int         broadcast_socket    = create_broadcast_socket(scheduler);
 
     uint16_t * op_port = p_port;
     *op_port = htons(*op_port);
@@ -143,7 +156,6 @@ static void * handle_broadcast (void * p_port)
                 close(broadcast_socket);
                 return NULL;
             }
-            printf("operational port sent: %hu\n", ntohs(*op_port));
         }
 
         if (false == g_running)
@@ -157,9 +169,377 @@ static void * handle_broadcast (void * p_port)
     return NULL;
 }
 
+static header_t * unpack_header (int client_conn)
+{
+    if (-1 == client_conn)
+    {
+        errno = EBADF;
+        perror("unpack_header - invalid file descriptor passed");
+        return NULL;
+    }
+
+    ssize_t     bytes_recv  = 0;
+    uint32_t    version     = 0;
+    uint32_t    operation   = 0;
+
+    bytes_recv = recv(client_conn, &version, sizeof(uint32_t), 0);
+    if (0 >= bytes_recv)
+    {
+        perror("version recv");
+        return NULL;
+    }
+
+    if (VERSION != ntohl(version))
+    {
+        perror("protocol version invalid ...");
+        return NULL;
+    }
+
+    bytes_recv = recv(client_conn, &operation, sizeof(uint32_t), 0);
+    if (0 >= bytes_recv)
+    {
+        perror("operation recv");
+        return NULL;
+    }
+
+    header_t * p_packet_hdr = calloc(1, sizeof(header_t));
+    if (NULL == p_packet_hdr)
+    {
+        errno = ENOMEM;
+        perror("could not allocate packet header struct");
+        return NULL;
+    }
+    p_packet_hdr->operation = ntohl(operation);
+    p_packet_hdr->version = ntohl(version);
+
+    return p_packet_hdr;
+}
+
+static uint32_t recv_num_operations (int client_conn)
+{
+    if (-1 == client_conn)
+    {
+        errno = EBADF;
+        perror("bad file descriptor passed");
+        return 0;
+    }
+
+    uint32_t num_operations = 0;
+    ssize_t  bytes_recv     = 0;
+
+    bytes_recv = recv(client_conn, &num_operations, sizeof(uint32_t), 0);
+    if (0 >= bytes_recv)
+    {
+        perror("num_operations recv");
+        return 0;
+    }
+    num_operations = ntohl(num_operations);
+    return num_operations;
+}
+
+static opchain_t * recv_opchain (int client_conn, uint32_t num_ops)
+{
+    if (-1 == client_conn)
+    {
+        errno = EBADF;
+        perror("bad file descriptor passed");
+        return 0;
+    }
+
+    if (0 == num_ops)
+    {
+        errno = EINVAL;
+        perror("num_ops is 0");
+        return NULL;
+    }
+
+    ssize_t     bytes_recv  = 0;
+    uint32_t    operation   = 0;
+    uint32_t    operand     = 0;
+    opchain_t * p_ops       = calloc(num_ops, sizeof(opchain_t));
+    if (NULL == p_ops)
+    {
+        errno = ENOMEM;
+        perror("could not allocate op chain");
+        return NULL;
+    }
+
+    for (size_t idx = 0; idx < num_ops; idx++)
+    {
+        bytes_recv = recv(client_conn, &operation, sizeof(uint32_t), 0);
+        if (0 >= bytes_recv)
+        {
+            perror("op_group recv");
+            return NULL;
+        }
+
+        bytes_recv = recv(client_conn, &operand, sizeof(uint32_t), 0);
+        if (0 >= bytes_recv)
+        {
+            perror("op_group recv");
+            return NULL;
+        }
+        operation = ntohl(operation);
+        operand   = ntohl(operand);
+        memcpy(&p_ops[idx].operation, &operation, sizeof(uint32_t));
+        memcpy(&p_ops[idx].operand, &operand, sizeof(uint32_t));
+
+        printf("operation: %u\toperand: %u\n", p_ops[idx].operation, p_ops[idx].operand);
+    }
+
+    return p_ops;
+}
+
+static uint32_t recv_iterations (int client_conn)
+{
+    if (-1 == client_conn)
+    {
+        errno = EBADF;
+        perror("bad file descriptor passed");
+        return 0;
+    }
+
+    ssize_t     bytes_recv  = 0;
+    uint32_t    num_iters   = 0;
+
+    bytes_recv = recv(client_conn, &num_iters, sizeof(uint32_t), 0);
+    if (0 >= bytes_recv)
+    {
+        perror("iteration recv");
+        return 0;
+    }
+
+    num_iters = ntohl(num_iters);
+    if (ITERATIONS != num_iters)
+    {
+        perror("only one iteration allowed");
+        return 0;
+    }
+
+    return num_iters;
+}
+
+static uint32_t recv_num_items (int client_conn)
+{
+    if (-1 == client_conn)
+    {
+        errno = EBADF;
+        perror("bad file descriptor passed");
+        return 0;
+    }
+
+    ssize_t     bytes_recv  = 0;
+    uint32_t    num_items   = 0;
+
+    bytes_recv = recv(client_conn, &num_items, sizeof(uint32_t), 0);
+    if (0 >= bytes_recv)
+    {
+        perror("num_items recv");
+        return 0;
+    }
+    
+    num_items = ntohl(num_items);
+    return num_items;
+}
+
+static item_t * recv_items (int client_conn, uint32_t num_items)
+{
+    if (-1 == client_conn)
+    {
+        errno = EBADF;
+        perror("bad file descriptor passed");
+        return 0;
+    }
+
+    if (0 == num_items)
+    {
+        errno = EINVAL;
+        perror("num_items is 0");
+        return NULL;
+    }
+
+    ssize_t     bytes_recv  = 0;
+    uint32_t    item        = 0;
+    item_t    * p_items     = calloc(num_items, sizeof(item_t));
+    if (NULL == p_items)
+    {
+        errno = ENOMEM;
+        perror("could not allocate memory for p_items");
+        return NULL;
+    }
+
+    for (size_t idx = 0; idx < num_items; idx++)
+    {
+        bytes_recv = recv(client_conn, &item, sizeof(uint32_t), 0);
+        if (0 >= bytes_recv)
+        {
+            perror("recv item");
+            clean_memory(p_items);
+            return NULL;
+        }
+        item = ntohl(item);
+        memcpy(&p_items[idx].item, &item, sizeof(uint32_t));
+        printf("item: %u\n", p_items[idx].item);
+    }
+
+    return p_items;
+}
+
+static subjob_payload_t * pack_payload_struct (uint32_t num_operations, opchain_t * p_ops,
+                uint32_t num_iters, uint32_t num_items, item_t * p_items)
+{
+    if ((0 == num_operations) || (0 == num_iters) ||
+        (0 == num_items))
+    {
+        errno = EINVAL;
+        perror("one or more uint32_t parameters are 0");
+        goto ERROR;
+    }
+
+    if ((NULL == p_ops) || (NULL == p_items))
+    {
+        errno = EINVAL;
+        perror("one or more lists passed are NULL");
+        goto ERROR;
+    }
+
+    subjob_payload_t * p_payload = calloc(1, sizeof(subjob_payload_t));
+    if (NULL == p_payload)
+    {
+        errno = ENOMEM;
+        perror("could not allocate memory for p_payload");
+        goto CLEANUP;
+    }
+
+    memcpy(&p_payload->num_operations, &num_operations, sizeof(uint32_t));
+    p_payload->op_groups = calloc(p_payload->num_operations, sizeof(opchain_t));
+    if (NULL == p_payload->op_groups)
+    {
+        errno = ENOMEM;
+        perror("could not allocate payload opchain");
+        goto CLEANUP;
+    }
+    memcpy(p_payload->op_groups, p_ops, (num_operations * sizeof(opchain_t)));
+    memcpy(&p_payload->num_iters, &num_iters, sizeof(uint32_t));
+    memcpy(&p_payload->num_items, &num_items, sizeof(uint32_t));
+    p_payload->items = calloc(num_items, sizeof(item_t));
+    if (NULL == p_payload->items)
+    {
+        errno = ENOMEM;
+        perror("could not allocate payload items");
+        goto CLEANUP;
+    }
+    memcpy(p_payload->items, p_items, (num_items * sizeof(item_t)));
+    return p_payload;
+
+CLEANUP:
+    clean_memory(p_payload);
+ERROR:
+    return NULL;
+}
+
+static subjob_payload_t * unpack_payload (int client_conn)
+{
+    if (-1 == client_conn)
+    {
+        errno = EBADF;
+        perror("unpack_payload - bad file descripto passed");
+        return NULL;
+    }
+
+    uint32_t           num_operations      = 0;
+    uint32_t           num_iters           = 0;
+    uint32_t           num_items           = 0;
+    opchain_t        * p_ops               = NULL;
+    item_t           * p_items             = NULL;
+    subjob_payload_t * p_packed            = NULL;
+
+    num_operations = recv_num_operations(client_conn);
+    if (0 == num_operations)
+    {
+        perror("no operations recv");
+        goto ERROR;
+    }
+    printf("number of operations: %u\n", num_operations);
+
+    p_ops = recv_opchain(client_conn, num_operations);
+    if (NULL == p_ops)
+    {
+        perror("could not recv ops chain");
+        goto END;
+    }
+    
+    num_iters = recv_iterations(client_conn);
+    if (0 == num_iters)
+    {
+        perror("could not recv number of iterations");
+        goto END;
+    }
+
+    num_items = recv_num_items(client_conn);
+    if (0 == num_items)
+    {
+        perror("could not recv number of items");
+        goto END;
+    }
+    printf("number of items: %u\n", num_items);
+
+    p_items = recv_items(client_conn, num_items);
+    if (NULL == p_items)
+    {
+        perror("could not recv items");
+        goto END;
+    }
+
+    p_packed = pack_payload_struct (num_operations,p_ops, num_iters,
+                        num_items, p_items);
+    if (NULL == p_packed)
+    {
+        perror("could not pack payload struct");
+        p_packed = NULL;
+    }
+
+END:
+    clean_memory(p_ops);
+    clean_memory(p_items);
+ERROR:
+    return p_packed;    
+}
+
+static void handle_submitter_req (void * p_client_socket)
+{
+    int         * p_client_conn = (int *) p_client_socket;
+    header_t    * p_hdr         = unpack_header(*p_client_conn);
+    if (NULL == p_hdr)
+    {
+        perror("could not pack header");
+        return;
+    }
+    printf("version: %u, operation: %u\n", p_hdr->version, p_hdr->operation);
+
+    subjob_payload_t * p_pload = unpack_payload(*p_client_conn);
+    if (NULL == p_pload)
+    {
+        perror("could not unpack payload");
+        return;
+    }
+    printf("p_pload: %p\n", (void *)p_pload);
+
+    return;
+}
+
+static void clean_memory (void * memory_obj)
+{
+    if (NULL == memory_obj)
+    {
+        return;
+    }
+    free(memory_obj);
+    memory_obj = NULL;
+}
+
 int main (int argc, char ** argv)
 {
-
     struct sigaction handle_sigint = { 0 };
     handle_sigint.sa_handler       = sigint_handler;
     sigfillset(&handle_sigint.sa_mask);
@@ -172,10 +552,8 @@ int main (int argc, char ** argv)
     int         reuse           = 1;
     int         bind_ret        = -1;
     int         listen_ret      = -1;
-    ssize_t     bytes_recv      = 0;
     pthread_t   broadcast_thread;
     
-
     op_port = get_port(argc, argv);
     if (0 == op_port)
     {
@@ -224,7 +602,6 @@ int main (int argc, char ** argv)
         return EXIT_FAILURE;
     }
 
-    char    worker_buff[MAX_BUFF]       = { 0 };
     int     client_array[MAX_CLIENTS]   = { 0 };
     int     idx                         = 0;
 
@@ -233,29 +610,11 @@ int main (int argc, char ** argv)
         client_array[idx] = accept(scheduler_fd, (struct sockaddr *)&scheduler, &scheduler_len);
         if (-1 == client_array[idx])
         {
-            perror("driver: accept");
-            close(scheduler_fd);
-            return EXIT_FAILURE;
+            perror("driver: connection refused");
         }
+
+        handle_submitter_req((void *) &client_array[idx]);
         
-        bytes_recv = recv(client_array[idx], worker_buff, MAX_BUFF, 0);
-        printf("server update: %s\n", worker_buff);
-        if (0 >= bytes_recv)
-        {
-            perror("driver - recv");
-            close(scheduler_fd);
-            return EXIT_FAILURE;
-        }
-
-        bytes_recv = recv(client_array[idx], worker_buff, MAX_BUFF, 0);
-        printf("server update: %s\n", worker_buff);
-        if (0 >= bytes_recv)
-        {
-            perror("driver - recv");
-            close(scheduler_fd);
-            return EXIT_FAILURE;
-        }
-
         if (MAX_CLIENTS == (idx + 1))
         {
             printf("max clients connected ... ");
