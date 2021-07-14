@@ -1,7 +1,7 @@
 #include "../includes/work_queue.h"
 #include "../includes/scheduler.h"
 
-work_queue_t * tqueue_init()
+work_queue_t * wqueue_init()
 {
     work_queue_t * p_new_queue = calloc(1, sizeof(work_queue_t));
     if (NULL == p_new_queue)
@@ -132,7 +132,7 @@ ssize_t is_empty (work_queue_t * p_wqueue)
     
 }
 
-ssize_t tqueue_len (work_queue_t * p_wqueue)
+ssize_t wqueue_len (work_queue_t * p_wqueue)
 {
     if ((NULL == p_wqueue) || (NULL == p_wqueue->head))
     {
@@ -166,7 +166,7 @@ work_queue_t * resize_tqueue (work_queue_t * p_wqueue)
     return p_bigger_queue;
 }
 
-bool tqueue_destroy (work_queue_t * p_wqueue)
+bool wqueue_destroy (work_queue_t * p_wqueue)
 {
     if (NULL == p_wqueue)
     {

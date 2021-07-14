@@ -2,10 +2,14 @@
 
 #include "../includes/scheduler.h"
 #include "../includes/operations.h"
+#include "../includes/work_queue.h"
 
-volatile bool g_running = true;
+volatile bool      g_running        = true;
+job_t           ** pp_jobs          = NULL;        
+work_queue_t     * p_wqueue         = NULL;
+volatile size_t    jobs_list_len    = 0;
 
-static void sigint_handler (int signo)
+void sigint_handler (int signo)
 {
     if (SIGINT == signo)
     {
@@ -15,7 +19,7 @@ static void sigint_handler (int signo)
     }
 }
 
-static uint16_t get_port(int argc, char ** argv)
+uint16_t get_port(int argc, char ** argv)
 {
     if (1 == argc)
     {
@@ -62,7 +66,7 @@ static uint16_t get_port(int argc, char ** argv)
     return port;
 }
 
-static struct sockaddr_in setup_scheduler ()
+struct sockaddr_in setup_scheduler ()
 {
     struct sockaddr_in scheduler = { 0 };
     memset((void *)&scheduler, 0, sizeof(scheduler));
@@ -74,7 +78,7 @@ static struct sockaddr_in setup_scheduler ()
     return scheduler;
 }
 
-static int create_broadcast_socket (struct sockaddr_in scheduler)
+int create_broadcast_socket (struct sockaddr_in scheduler)
 {
     int         broadcast_socket    = 0;
     int         reuse               = 1;
@@ -107,7 +111,7 @@ static int create_broadcast_socket (struct sockaddr_in scheduler)
     return broadcast_socket;
 }
 
-static void * handle_broadcast (void * p_port)
+void * handle_broadcast (void * p_port)
 {
     struct sockaddr_in scheduler    = setup_scheduler();
     struct sockaddr_in client       = { 0 };
@@ -169,7 +173,7 @@ static void * handle_broadcast (void * p_port)
     return NULL;
 }
 
-static header_t * unpack_header (int client_conn)
+header_t * unpack_header (int client_conn)
 {
     if (-1 == client_conn)
     {
@@ -210,12 +214,12 @@ static header_t * unpack_header (int client_conn)
         return NULL;
     }
     p_packet_hdr->operation = ntohl(operation);
-    p_packet_hdr->version = ntohl(version);
+    p_packet_hdr->version   = ntohl(version);
 
     return p_packet_hdr;
 }
 
-static uint32_t recv_num_operations (int client_conn)
+uint32_t recv_num_operations (int client_conn)
 {
     if (-1 == client_conn)
     {
@@ -237,7 +241,7 @@ static uint32_t recv_num_operations (int client_conn)
     return num_operations;
 }
 
-static opchain_t * recv_opchain (int client_conn, uint32_t num_ops)
+opchain_t * recv_opchain (int client_conn, uint32_t num_ops)
 {
     if (-1 == client_conn)
     {
@@ -269,14 +273,14 @@ static opchain_t * recv_opchain (int client_conn, uint32_t num_ops)
         bytes_recv = recv(client_conn, &operation, sizeof(uint32_t), 0);
         if (0 >= bytes_recv)
         {
-            perror("op_group recv");
+            perror("operation recv");
             return NULL;
         }
 
         bytes_recv = recv(client_conn, &operand, sizeof(uint32_t), 0);
         if (0 >= bytes_recv)
         {
-            perror("op_group recv");
+            perror("operand recv");
             return NULL;
         }
         operation = ntohl(operation);
@@ -290,7 +294,7 @@ static opchain_t * recv_opchain (int client_conn, uint32_t num_ops)
     return p_ops;
 }
 
-static uint32_t recv_iterations (int client_conn)
+uint32_t recv_iterations (int client_conn)
 {
     if (-1 == client_conn)
     {
@@ -319,7 +323,7 @@ static uint32_t recv_iterations (int client_conn)
     return num_iters;
 }
 
-static uint32_t recv_num_items (int client_conn)
+uint32_t recv_num_items (int client_conn)
 {
     if (-1 == client_conn)
     {
@@ -342,7 +346,7 @@ static uint32_t recv_num_items (int client_conn)
     return num_items;
 }
 
-static item_t * recv_items (int client_conn, uint32_t num_items)
+item_t * recv_items (int client_conn, uint32_t num_items)
 {
     if (-1 == client_conn)
     {
@@ -385,7 +389,7 @@ static item_t * recv_items (int client_conn, uint32_t num_items)
     return p_items;
 }
 
-static subjob_payload_t * pack_payload_struct (uint32_t num_operations, opchain_t * p_ops,
+subjob_payload_t * pack_payload_struct (uint32_t num_operations, opchain_t * p_ops,
                 uint32_t num_iters, uint32_t num_items, item_t * p_items)
 {
     if ((0 == num_operations) || (0 == num_iters) ||
@@ -438,7 +442,7 @@ ERROR:
     return NULL;
 }
 
-static subjob_payload_t * unpack_payload (int client_conn)
+subjob_payload_t * unpack_payload (int client_conn)
 {
     if (-1 == client_conn)
     {
@@ -506,29 +510,148 @@ ERROR:
     return p_packed;    
 }
 
-static void handle_submitter_req (void * p_client_socket)
+void handle_submitter_req (void * p_client_socket)
 {
     int         * p_client_conn = (int *) p_client_socket;
+
     header_t    * p_hdr         = unpack_header(*p_client_conn);
     if (NULL == p_hdr)
     {
         perror("could not pack header");
         return;
     }
-    printf("version: %u, operation: %u\n", p_hdr->version, p_hdr->operation);
-
-    subjob_payload_t * p_pload = unpack_payload(*p_client_conn);
-    if (NULL == p_pload)
-    {
-        perror("could not unpack payload");
-        return;
-    }
-    printf("p_pload: %p\n", (void *)p_pload);
-
+    
+    clean_memory(p_hdr);
     return;
 }
 
-static void clean_memory (void * memory_obj)
+int handle_working_socket (struct sockaddr_in scheduler)
+{
+    int         scheduler_fd    = 0;
+    int         opt_ret         = 0;
+    int         reuse           = 1;
+    int         bind_ret        = -1;
+    int         listen_ret      = -1;
+
+    scheduler_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (0 == scheduler_fd)
+    {
+        perror("driver - socket");
+        return -1;
+    }
+
+    opt_ret = setsockopt(scheduler_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+    if (-1 == opt_ret)
+    {
+        perror("driver - setsockopt");
+        close(scheduler_fd);
+        return -1;
+    }
+
+    bind_ret = bind(scheduler_fd, (const struct sockaddr *)&scheduler, sizeof(scheduler));
+    if (0 > bind_ret)
+    {
+        perror("driver - bind");
+        close(scheduler_fd);
+        return -1;
+    }
+
+    listen_ret = listen(scheduler_fd, BACKLOG);
+    if (-1 == listen_ret)
+    {
+        perror("driver - listen");
+        close(scheduler_fd);
+        return -1;
+    }
+
+    return scheduler_fd;
+}
+
+job_t * create_job (subjob_payload_t * p_job_payload)
+{
+    if (NULL == p_job_payload)
+    {
+        errno = EINVAL;
+        perror("job parameter passed is NULL");
+        return NULL;
+    }
+    uint32_t num_items = p_job_payload->num_items;
+    job_t * p_job      = calloc(1, sizeof(job_t));
+    if (NULL == p_job)
+    {
+        errno = ENOMEM;
+        perror("could not allocate job");
+        return NULL;
+    }
+
+    p_job->job_id           = -1;
+    p_job->num_items        = num_items;
+    p_job->num_operations   = p_job_payload->num_operations;
+    p_job->p_work           = calloc(num_items, sizeof(work_t));
+    if (NULL == p_job->p_work)
+    {
+        errno = ENOMEM;
+        perror("could not allocate work array");
+        clean_memory(p_job);
+        return NULL;
+    }
+
+    for (size_t idx = 0; idx < num_items; idx++)
+    {
+        p_job->p_work[idx].item = p_job_payload->items[idx].item;
+        p_job->p_work[idx].p_chain = calloc(p_job->num_operations, sizeof(opchain_t));
+        if (NULL == p_job->p_work[idx].p_chain)
+        {
+            errno = ENOMEM;
+            perror("could not allocate work's opchain");
+            clean_memory(p_job->p_work);
+            clean_memory(p_job);
+            return NULL;
+        }
+
+        for (size_t jdx = 0; jdx < p_job->num_operations; jdx++)
+        {
+            p_job->p_work[idx].p_chain[jdx].operation =
+            p_job_payload->op_groups[jdx].operation;
+
+            p_job->p_work[idx].p_chain[jdx].operand =
+            p_job_payload->op_groups[jdx].operand;
+        }
+
+        p_job->p_work[idx].iterations   = p_job_payload->num_iters;
+        p_job->p_work[idx].b_task_done  = false;
+        p_job->p_work[idx].answer       = -1;
+        p_job->p_work[idx].worker_sock  = -1;
+        p_job->p_work[idx].job_id       = -1;
+
+        if (NULL == &p_job->p_work[idx])
+        {
+            clean_memory(&p_job->p_work[idx]);
+            fprintf(stderr, "error building work for job");
+            return NULL;
+        }
+    }
+    clean_memory(p_job_payload);
+    return p_job;
+}
+
+void destroy_job ()
+{
+    for (size_t idx = 0; idx < jobs_list_len; idx++)
+    {
+        if (NULL != pp_jobs[idx])
+        {
+            for(size_t jdx = 0; jdx <= pp_jobs[idx]->num_operations; jdx++)
+            {
+                clean_memory(pp_jobs[idx]->p_work[jdx].p_chain);
+            }
+            clean_memory(pp_jobs[idx]->p_work);
+            clean_memory(pp_jobs[idx]);
+        }
+    }
+}
+
+void clean_memory (void * memory_obj)
 {
     if (NULL == memory_obj)
     {
@@ -548,10 +671,6 @@ int main (int argc, char ** argv)
 
     uint16_t    op_port         = 0;
     int         scheduler_fd    = 0;
-    int         opt_ret         = 0;
-    int         reuse           = 1;
-    int         bind_ret        = -1;
-    int         listen_ret      = -1;
     pthread_t   broadcast_thread;
     
     op_port = get_port(argc, argv);
@@ -571,34 +690,11 @@ int main (int argc, char ** argv)
     pthread_create(&broadcast_thread, NULL, handle_broadcast, &op_port);
     pthread_detach(broadcast_thread);
 
-    scheduler_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (0 == scheduler_fd)
+    scheduler_fd = handle_working_socket(scheduler);
+    if (-1 == scheduler_fd)
     {
-        perror("driver - socket");
-        return EXIT_FAILURE;
-    }
-
-    opt_ret = setsockopt(scheduler_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
-    if (-1 == opt_ret)
-    {
-        perror("driver - setsockopt");
-        close(scheduler_fd);
-        return EXIT_FAILURE;
-    }
-
-    bind_ret = bind(scheduler_fd, (const struct sockaddr *)&scheduler, scheduler_len);
-    if (0 > bind_ret)
-    {
-        perror("driver - bind");
-        close(scheduler_fd);
-        return EXIT_FAILURE;
-    }
-
-    listen_ret = listen(scheduler_fd, BACKLOG);
-    if (-1 == listen_ret)
-    {
-        perror("driver - listen");
-        close(scheduler_fd);
+        errno = EBADF;
+        perror("could not establish working socket, exiting ...");
         return EXIT_FAILURE;
     }
 
