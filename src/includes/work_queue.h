@@ -9,15 +9,20 @@
 #define QUEUE_CAPACITY 100
 
 /**
- * @brief - a node of work items to be passed to the worker thread
- * @member work - a pointer to the work struct
- * @member next - a pointer to the next set of work instructions 
+ * @brief - declaration of global variables
+ * @var p_wqueue - a queue container to store the work required for each job
+ * @var job_list_len - the length of the jobs array
+ * @var jobs_list_mutex - a mutex type for adding jobs to the job list
+ * @var running_mutex - mutex to lock/unlock the status of g_running
+ * @var wqueue_mutex - a mutex type for adding work to the work queue
+ * @var condition - a signaling condition to alert working/waiting threads
  */
-typedef struct _queue_node_t
-{
-    work_t               * work;
-    struct _queue_node_t * next;
-} queue_node_t;
+extern volatile bool      g_running;
+extern volatile size_t    jobs_list_len;
+extern pthread_mutex_t    jobs_list_mutex;
+extern pthread_mutex_t    running_mutex;
+extern pthread_mutex_t    wqueue_mutex;
+extern pthread_cond_t     condition;
 
 /**
  * @brief - a structure container for the queue to store work
@@ -29,8 +34,9 @@ typedef struct _queue_node_t
  */
 typedef struct _work_queue_t
 {
-    queue_node_t  * p_nodes;
-    queue_node_t  * head;
+    work_t       ** p_work;
+    size_t          head;
+    size_t          tail;
     size_t          q_size;
     size_t          capacity;
 } work_queue_t;
@@ -91,7 +97,7 @@ ssize_t wqueue_len (work_queue_t * p_wqueue);
  * @return - a pointer to the newly resized queue container, NULL
  *           on error
  */
-work_queue_t * resize_tqueue (work_queue_t * p_wqueue);
+work_queue_t * resize_wqueue (work_queue_t * p_wqueue);
 
 /**
  * @brief - eliminates current queue, free'ing all nodes and the

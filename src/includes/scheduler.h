@@ -20,16 +20,37 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include "./operations.h"
+#include "./work_queue.h"
 
+#define SIGINT          2
+#define BACKLOG         3
+#define TV_TIMEOUT      5
+#define BASE_10         10
+#define MAX_CLIENTS     100
+#define MAX_BUFF        1024
 #define BROADCAST_PORT  31337
 #define MIN_PORT        31338
 #define MAX_PORT        65535
-#define MAX_BUFF        1024
-#define MAX_CLIENTS     100
-#define BASE_10         10
-#define TV_TIMEOUT      5
-#define BACKLOG         3
-#define SIGINT          2
+
+/**
+ * @brief - declaration of global variables
+ * @var g_running - global, exportable bool to trigger state of driver
+ * @var pp_jobs - an array of pointers to job structures
+ * @var p_wqueue - a queue container to store the work required for each job
+ * @var job_list_len - the length of the jobs array
+ * @var jobs_list_mutex - a mutex type for adding jobs to the job list
+ * @var running_mutex - mutex to lock/unlock the status of g_running
+ * @var wqueue_mutex - a mutex type for adding work to the work queue
+ * @var condition - a signaling condition to alert working/waiting threads
+ */
+volatile bool      g_running;
+job_t           ** pp_jobs          = NULL;        
+work_queue_t     * p_wqueue         = NULL;
+volatile size_t    jobs_list_len    = 0;
+pthread_mutex_t    jobs_list_mutex;
+pthread_mutex_t    running_mutex;
+pthread_mutex_t    wqueue_mutex;
+pthread_cond_t     condition;
 
 /**
  * @brief - a SIGINT handler to catch ctrl+c keyboard interrupt.
@@ -40,50 +61,35 @@
 void sigint_handler (int signo);
 
 /**
- * function info here
+ * @brief - takes data sent from submitter and unpacks the header info,
+ *          checks the version and operation values for validity and
+ *          stores values into their appropriate places within the 
+ *          header struct
+ * @param client_conn - the file descriptor to the client's connection
+ * @return - a pointer to the header struct containing valid info or NULL
+ *           on error
  */
 header_t * unpack_header (int client_conn);
 
 /**
- * recv num ops
- */
-uint32_t recv_num_operations (int client_conn);
-
-/**
- * handle opchain
- */
-opchain_t * recv_opchain (int client_conn, uint32_t num_ops);
-
-/**
- * recv iterations
- */
-uint32_t recv_iterations (int client_conn);
-
-/**
- * recv number of items
- */
-uint32_t recv_num_items (int client_conn);
-
-/**
- * handle items reciept
- */
-item_t * recv_items (int client_conn, uint32_t num_items);
-
-/**
- * pack stuffs
- */
-subjob_payload_t * pack_payload_struct (uint32_t num_operations, opchain_t * p_ops,
-                uint32_t num_iters, uint32_t num_items, item_t * p_items);
-
-/**
- * unpack payload
+ * @brief - calls all receipt helper functions in order to appropriately retrieve
+ *          all data sent from the submitter before calling the pack the submit
+ *          job payload struct
+ * @param client_conn - the file descriptor to the client's connection
+ * @return - a pointer to the submit job payload struct containing all data
+ *           received from the submitter or NULL on error
  */
 subjob_payload_t * unpack_payload (int client_conn);
 
 /**
- * handle conns
+ * @brief - calls unpack_header helper function to recieve the initial packet
+ *          header. Validation on actual header data is done within the helper
+ *          function, however, validation that the header was properly populated
+ *          is done here before clearing header information
+ * @param client_conn - the file descriptor of the client's connection
+ * @return - N/A
  */
-void handle_submitter_req (void * p_client_socket);
+void handle_submitter_req (int client_conn);
 
 /**
  * @brief - handle command line argument to receive a valid working
@@ -98,17 +104,7 @@ void handle_submitter_req (void * p_client_socket);
 uint16_t get_port(int argc, char ** argv);
 
 /**
- * setup scheduler
- */
-struct sockaddr_in setup_scheduler ();
-
-/**
- * setup socket stuffs
- */
-int create_broadcast_socket (struct sockaddr_in scheduler);
-
-/**
- * @brief - handle to infinite broadcast send receive betweem the
+ * @brief - handle to infinite broadcast send/receive between the
  *          submitter/worker and the scheduler. This will always listen
  *          for the incoming broadcast message based upon a global
  *          running variable that is only triggered by the shutdown flag
@@ -120,22 +116,60 @@ int create_broadcast_socket (struct sockaddr_in scheduler);
 void * handle_broadcast (void * p_port);
 
 /**
- * working socket setup
- */
-int handle_working_socket (struct sockaddr_in scheduler);
-
-/**
- * create job
+ * @brief - takes a pointer to the submit job payload struct in order to
+ *          appropriately populate the job struct with the submitted data
+ * @param p_work - a pointer to the submit job payload struct containing
+ *                 all work data passed to the scheduler from the submitter
+ * @return - a pointer to a job struct containing all work data appropriately
+ *           packed or NULL on error
  */
 job_t * create_job (subjob_payload_t * p_work);
 
 /**
- * destroy job
+ * @brief - receives a job and populates the global jobs list before taking
+ *          each jobs work groups and populates the work queue and assigns the
+ *          job id to keep track of all work associated with each job
+ * @param p_job - a pointer to the job struct containing the instructions for
+ *                the work to be performed
+ * @return - returns the job id (index of the jobs list) upon successful addition
+ *           to the jobs list/work queue or -1 on error
+ */
+ssize_t populate_jobs_and_queue (job_t * p_job);
+
+/**
+ * @brief - receive answer to each tasked work from the worker
+ * @param worker_conn - the file descriptor of the worker's connection
+ * @param answer - the answer calculated answer of the work passed
+ * @return - N/A
+ */
+void recv_answer (int worker_conn, int32_t answer);
+
+/**
+ * @brief - checks to see if job within jobs list is completed. Upon successful
+ *          completion check, will print the Jo
+ */
+bool jobs_done (job_t * p_job);
+
+/**
+ * find job
+ */
+job_t * find_job (uint32_t job_id);
+
+/**
+ * @brief iterates over the jobs list and appropriately free's the list of work
+ *        and the associated job
+ * @param - N/A
+ * @return - N/A
  */
 void destroy_job ();
 
 /**
- * clean memory stuffs
+ * @brief - used as a helper function in order to free and NULL'ify memory
+ *          allocated
+ * @param memory_obj - a pointer to the allocated memory object in order to
+ *                     appropriate clean memory
+ * @return - N/A
  */
 void clean_memory (void * memory_obj);
+
 #endif

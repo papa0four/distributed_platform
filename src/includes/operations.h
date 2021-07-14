@@ -3,6 +3,7 @@
 
 #include "scheduler.h"
 
+// define pre-processor constants
 #define VERSION         1
 #define ITERATIONS      1
 #define MAX_JOBS        50
@@ -57,12 +58,12 @@ typedef struct _submit_job_payload_t
 typedef struct _work_t
 {
     uint32_t    job_id;
-    int         worker_sock;
-    int32_t     answer;
-    bool        b_task_done;
     uint32_t    iterations;
-    opchain_t * p_chain;
     uint32_t    item;
+    int32_t     answer;
+    int         worker_sock;
+    bool        b_work_done;
+    opchain_t * p_chain;
 } work_t;
 
 /**
