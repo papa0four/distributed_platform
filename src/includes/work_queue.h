@@ -42,7 +42,7 @@ typedef struct _work_queue_t
  * @param - N/A
  * @return - a pointer to the newly created queue structure
  */
-work_queue_t * tqueue_init ();
+work_queue_t * wqueue_init ();
 
 /**
  * @brief - used to add a new set of work instructions to the queue
@@ -82,7 +82,7 @@ ssize_t is_empty (work_queue_t * p_wqueue);
  * @param p_tqueue - a pointer to the overarching queue structure
  * @return - the value stored a p_tqueue->q_size, -1 on error
  */
-static ssize_t tqueue_len (work_queue_t * p_wqueue);
+ssize_t wqueue_len (work_queue_t * p_wqueue);
 
 /**
  * @brief - helper function: used to dynamically resize the overall
@@ -99,6 +99,6 @@ work_queue_t * resize_tqueue (work_queue_t * p_wqueue);
  * @param p_tqueue - a pointer to the overarching queue structure
  * @return - true upon proper tear down of the queue, false on error
  */
-bool tqueue_destroy (work_queue_t * p_wqueue);
+bool wqueue_destroy (work_queue_t * p_wqueue);
 
 #endif

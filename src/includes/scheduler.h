@@ -19,7 +19,7 @@
 #include <sys/un.h>
 #include <arpa/inet.h>
 #include <errno.h>
-#include "operations.h"
+#include "./operations.h"
 
 #define BROADCAST_PORT  31337
 #define MIN_PORT        31338
@@ -37,53 +37,53 @@
  * @param signo - an in value equal to a SIGINT keyboard interrupt '2'
  * @return - N/A
  */
-static void sigint_handler (int signo);
+void sigint_handler (int signo);
 
 /**
  * function info here
  */
-static header_t * unpack_header (int client_conn);
+header_t * unpack_header (int client_conn);
 
 /**
  * recv num ops
  */
-static uint32_t recv_num_operations (int client_conn);
+uint32_t recv_num_operations (int client_conn);
 
 /**
  * handle opchain
  */
-static opchain_t * recv_opchain (int client_conn, uint32_t num_ops);
+opchain_t * recv_opchain (int client_conn, uint32_t num_ops);
 
 /**
  * recv iterations
  */
-static uint32_t recv_iterations (int client_conn);
+uint32_t recv_iterations (int client_conn);
 
 /**
  * recv number of items
  */
-static uint32_t recv_num_items (int client_conn);
+uint32_t recv_num_items (int client_conn);
 
 /**
  * handle items reciept
  */
-static item_t * recv_items (int client_conn, uint32_t num_items);
+item_t * recv_items (int client_conn, uint32_t num_items);
 
 /**
  * pack stuffs
  */
-static subjob_payload_t * pack_payload_struct (uint32_t num_operations, opchain_t * p_ops,
+subjob_payload_t * pack_payload_struct (uint32_t num_operations, opchain_t * p_ops,
                 uint32_t num_iters, uint32_t num_items, item_t * p_items);
 
 /**
  * unpack payload
  */
-static subjob_payload_t * unpack_payload (int client_conn);
+subjob_payload_t * unpack_payload (int client_conn);
 
 /**
  * handle conns
  */
-static void handle_submitter_req (void * p_client_socket);
+void handle_submitter_req (void * p_client_socket);
 
 /**
  * @brief - handle command line argument to receive a valid working
@@ -95,17 +95,17 @@ static void handle_submitter_req (void * p_client_socket);
  *               argument is a number within the valid range
  * @return - the specified port number passed as a command line argument
  */
-static uint16_t get_port(int argc, char ** argv);
+uint16_t get_port(int argc, char ** argv);
 
 /**
  * setup scheduler
  */
-static struct sockaddr_in setup_scheduler ();
+struct sockaddr_in setup_scheduler ();
 
 /**
  * setup socket stuffs
  */
-static int create_broadcast_socket (struct sockaddr_in scheduler);
+int create_broadcast_socket (struct sockaddr_in scheduler);
 
 /**
  * @brief - handle to infinite broadcast send receive betweem the
@@ -117,10 +117,25 @@ static int create_broadcast_socket (struct sockaddr_in scheduler);
  *                 to create the working socket
  * @return - N/A
  */
-static void * handle_broadcast (void * p_port);
+void * handle_broadcast (void * p_port);
+
+/**
+ * working socket setup
+ */
+int handle_working_socket (struct sockaddr_in scheduler);
+
+/**
+ * create job
+ */
+job_t * create_job (subjob_payload_t * p_work);
+
+/**
+ * destroy job
+ */
+void destroy_job ();
 
 /**
  * clean memory stuffs
  */
-static void clean_memory (void * memory_obj);
+void clean_memory (void * memory_obj);
 #endif

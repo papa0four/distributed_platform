@@ -5,7 +5,7 @@
 
 #define VERSION         1
 #define ITERATIONS      1
-#define MAX_
+#define MAX_JOBS        50
 
 // define operations
 #define SUBMIT_JOB      0
@@ -57,7 +57,7 @@ typedef struct _submit_job_payload_t
 typedef struct _work_t
 {
     uint32_t    job_id;
-    pthread_t   worker_id;
+    int         worker_sock;
     int32_t     answer;
     bool        b_task_done;
     uint32_t    iterations;
