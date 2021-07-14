@@ -3,27 +3,29 @@
 
 work_queue_t * wqueue_init()
 {
-    work_queue_t * p_new_queue = calloc(1, sizeof(work_queue_t));
-    if (NULL == p_new_queue)
+    work_queue_t * p_wqueue = calloc(1, sizeof(work_queue_t));
+    if (NULL == p_wqueue)
     {
         errno = ENOMEM;
-        perror("could not allocate memory for new queue");
+        perror("queue init - could not initialize queue container");
         return NULL;
     }
 
-    p_new_queue->p_nodes = calloc(QUEUE_CAPACITY, sizeof(queue_node_t));
-    if (NULL == p_new_queue->p_nodes)
+    p_wqueue->head      = 0;
+    p_wqueue->tail      = 0;
+    p_wqueue->q_size    = 0;
+    p_wqueue->capacity  = QUEUE_CAPACITY;
+
+    p_wqueue->p_work = calloc(QUEUE_CAPACITY, sizeof(work_t));
+    if (NULL == p_wqueue->p_work)
     {
         errno = ENOMEM;
-        perror("could not allocate array of work");
-        clean_memory(p_new_queue);
+        perror("queue init - could not allocate memory for work list");
+        clean_memory(p_wqueue);
         return NULL;
     }
 
-    p_new_queue->q_size       = 0;
-    p_new_queue->capacity   = QUEUE_CAPACITY;
-
-    return p_new_queue;
+    return p_wqueue;
 }
 
 bool enqueue_work (work_queue_t * p_wqueue, work_t * p_work)
@@ -31,82 +33,76 @@ bool enqueue_work (work_queue_t * p_wqueue, work_t * p_work)
     if ((NULL == p_wqueue) || (NULL == p_work))
     {
         errno = EINVAL;
-        perror("could not enqueue - one or more parameters are NULL");
+        perror("one or more parameters passed are NULL");
         return false;
     }
 
-    bool b_enqueued = false;
-    queue_node_t * p_new_node = calloc(1, sizeof(queue_node_t));
-    if (NULL == p_new_node)
+    pthread_mutex_lock(&wqueue_mutex);
+    if (1 == is_empty(p_wqueue))
     {
-        errno = ENOMEM;
-        perror("could not allocate new node");
-        return b_enqueued;
+        p_wqueue->p_work[p_wqueue->head] = p_work;
+        p_wqueue->tail      += 1;
+        p_wqueue->q_size    += 1;
+
+        pthread_mutex_unlock(&wqueue_mutex);
+        pthread_cond_broadcast(&condition);
+        return true;
     }
 
-    p_new_node->work = p_work;
+    if (1 == is_full(p_wqueue))
+    {
+        p_wqueue = resize_wqueue(p_wqueue);
+    }    
+    p_wqueue->p_work[p_wqueue->tail] = p_work;
+    p_wqueue->tail      += 1;
+    p_wqueue->q_size    += 1;
 
-    if (NULL == p_wqueue->head)
-    {
-        p_wqueue->head = p_new_node;
-        p_wqueue->q_size += 1;
-        b_enqueued = true;
-    }
-    else
-    {
-        if (1 == is_full(p_wqueue))
-        {
-            p_wqueue = resize_tqueue(p_wqueue);
-        }
-        queue_node_t * p_current = p_wqueue->head;
-        while (p_current->next)
-        {
-            p_current = p_current->next;
-        }
-        p_current->next = p_new_node;
-        p_wqueue->q_size += 1;
-        b_enqueued = true;
-    }
-    return b_enqueued;    
+    pthread_mutex_unlock(&wqueue_mutex);
+    pthread_cond_broadcast(&condition);
+
+    return true;
 }
 
 work_t * dequeue_work (work_queue_t * p_wqueue)
 {
-    if ((NULL == p_wqueue) || (NULL == p_wqueue->head))
+    if (NULL == p_wqueue)
     {
         errno = EINVAL;
-        perror("the queue or queue head are NULL");
+        perror("the queue is NULL");
         return NULL;
     }
 
-    queue_node_t * p_work_ret   = p_wqueue->head;
-    work_t       * p_work       = p_work_ret->work;
-    
-    if (NULL == p_wqueue->head->next)
+    pthread_mutex_lock(&wqueue_mutex);
+    while ((g_running) && is_empty(p_wqueue))
     {
-        p_wqueue->head = NULL;
-    }
-    else
-    {
-        p_wqueue->head = p_wqueue->head->next;
+        pthread_cond_wait(&condition, &wqueue_mutex);
+        if (false == g_running)
+        {
+            pthread_mutex_unlock(&wqueue_mutex);
+            clean_memory(p_wqueue);
+            return NULL;
+        }
     }
 
-    p_wqueue->q_size -= 1;
-    clean_memory(p_work_ret);
+    work_t * p_work = p_wqueue->p_work[p_wqueue->head];
+    p_wqueue->head      += 1;
+    p_wqueue->q_size    -= 1;
+    pthread_mutex_unlock(&wqueue_mutex);
+    pthread_cond_broadcast(&condition);
 
     return p_work;
 }
 
 ssize_t is_full (work_queue_t * p_wqueue)
 {
-    if ((NULL == p_wqueue) || (NULL == p_wqueue))
+    if (NULL == p_wqueue)
     {
         errno = EINVAL;
         perror("queue pointer passed or queue head is NULL");
         return -1;
     }
 
-    if (p_wqueue->q_size == p_wqueue->capacity)
+    if (p_wqueue->q_size == (p_wqueue->capacity - 1))
     {
         return 1;
     }
@@ -134,36 +130,36 @@ ssize_t is_empty (work_queue_t * p_wqueue)
 
 ssize_t wqueue_len (work_queue_t * p_wqueue)
 {
-    if ((NULL == p_wqueue) || (NULL == p_wqueue->head))
+    if (NULL == p_wqueue)
     {
         errno = EINVAL;
-        perror("queue pointer or queue head is NULL");
+        perror("queue pointer is NULL");
         return -1;
     }
 
     return p_wqueue->q_size;
 }
 
-work_queue_t * resize_tqueue (work_queue_t * p_wqueue)
+work_queue_t * resize_wqueue (work_queue_t * p_wqueue)
 {
     if (NULL == p_wqueue)
     {
         errno = EINVAL;
-        perror("queue pointer passed is NULL");
+        perror("resize queue - pointer to container is NULL");
         return NULL;
     }
-
-    work_queue_t * p_bigger_queue = NULL;
-    p_bigger_queue = realloc(p_wqueue, (QUEUE_CAPACITY * 2) * sizeof(work_queue_t));
-    if (NULL == p_bigger_queue)
+    p_wqueue = realloc(p_wqueue, (p_wqueue->capacity * 2));
+    if (NULL == p_wqueue)
     {
         errno = ENOMEM;
-        perror("could not reallocate queue");
+        perror("resize queue - could not reallocate container");
+        clean_memory(p_wqueue);
         return NULL;
     }
 
-    p_bigger_queue->capacity = (QUEUE_CAPACITY * 2);
-    return p_bigger_queue;
+    p_wqueue->capacity = (p_wqueue->capacity * 2);
+
+    return p_wqueue;
 }
 
 bool wqueue_destroy (work_queue_t * p_wqueue)
@@ -171,31 +167,31 @@ bool wqueue_destroy (work_queue_t * p_wqueue)
     if (NULL == p_wqueue)
     {
         errno = EINVAL;
-        perror("queue pointer is NULL, nothing to destroy");
+        perror("pointer to container passed is empty");
         return false;
     }
 
     if (1 == is_empty(p_wqueue))
     {
-        printf("destroying task queue container\n");
-        clean_memory(p_wqueue);
+        if (p_wqueue)
+        {
+            if (p_wqueue->p_work)
+            {
+                clean_memory(p_wqueue->p_work);
+            }
+            clean_memory(p_wqueue);
+        }
         return true;
     }
 
-    queue_node_t * p_current = p_wqueue->head;
-    queue_node_t * p_temp    = NULL;
-
-    while (p_current)
+    for (size_t idx = 0; idx < p_wqueue->q_size; idx++)
     {
-        p_temp      = p_current;
-        p_current   = p_current->next;
-
-        clean_memory(p_temp);
-        p_wqueue->q_size -= 1;
+        if (p_wqueue->p_work[idx])
+        {
+            clean_memory(p_wqueue->p_work[idx]->p_chain);
+            clean_memory(p_wqueue->p_work[idx]);
+        }
     }
-    p_wqueue->q_size    = 0;
-    p_wqueue->capacity  = 0;
-
     clean_memory(p_wqueue);
     return true;
 }
