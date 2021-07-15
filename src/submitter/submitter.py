@@ -184,4 +184,6 @@ def handle_submitter() -> None:
         conn_fd.close()
         exit()
 
+    bytes_recv = conn_fd.recv(1024)
+
 handle_submitter()
