@@ -76,7 +76,7 @@ void destroy_jobs ()
     {
         if (NULL != pp_jobs[idx])
         {
-            for(size_t jdx = 0; jdx <= pp_jobs[idx]->num_operations; jdx++)
+            for(size_t jdx = 0; jdx < pp_jobs[idx]->num_operations; jdx++)
             {
                 clean_memory(pp_jobs[idx]->p_work[jdx].p_chain);
             }

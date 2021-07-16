@@ -147,7 +147,6 @@ def handle_submitter() -> None:
         header = p_protocols.Packet_Protocol(protocol_version, shutdown)
         hdr = header.create_protocol_header(protocol_version, shutdown)
         try:
-            print("sending twice?")
             bytes_sent = conn_fd.send(hdr)
             if (bytes_sent <= 0):
                 print("could not send shutdown flag");

@@ -812,17 +812,20 @@ static ssize_t determine_operation (int client_sock)
             {
                 fprintf(stderr, "could not send job_id\n");
             }
+            clean_memory(submitter_payload->items);
+            clean_memory(submitter_payload->op_groups);
+            clean_memory(submitter_payload);
             clean_memory(p_hdr);
             break;
 
         case QUERY_WORK:
-            send_task_to_worker(client_sock);
             clean_memory(p_hdr);
+            send_task_to_worker(client_sock);
             break;
 
         case SUBMIT_WORK:
-            recv_computation(client_sock);
             clean_memory(p_hdr);
+            recv_computation(client_sock);
             break;
 
         case SHUTDOWN:

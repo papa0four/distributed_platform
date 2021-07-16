@@ -26,8 +26,7 @@ def connect_to_scheduler() -> int:
         if conn_fd is None:
             print("connection unexpectedly closed...")
             exit()
-        print(f"connection made to scheduler via {serv_info[0]}:{serv_info[1]}")
         return conn_fd
-    except IOError:
+    except TypeError:
         print(f"connection unexpectedly closed... ")
     
