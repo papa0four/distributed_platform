@@ -19,8 +19,7 @@ job_t * create_job (subjob_payload_t * p_job_payload)
 
     p_job->job_id           = -1;
     p_job->num_items        = num_items;
-    memcpy(&p_job->num_operations,
-           &p_job_payload->num_operations, sizeof(uint32_t));
+    p_job->num_operations   = p_job_payload->num_operations;
     p_job->p_work           = calloc(num_items, sizeof(work_t));
     if (NULL == p_job->p_work)
     {
@@ -30,10 +29,9 @@ job_t * create_job (subjob_payload_t * p_job_payload)
         return NULL;
     }
 
-    for (size_t idx = 0; idx < num_items; idx++)
+    for (size_t idx = 0; idx < num_items; ++idx)
     {
-        memcpy(&p_job->p_work[idx].item, 
-               &p_job_payload->items[idx].item, sizeof(uint32_t));
+        p_job->p_work[idx].item    = p_job_payload->items[idx].item;
         p_job->p_work[idx].p_chain = calloc(p_job->num_operations, sizeof(opchain_t));
         if (NULL == p_job->p_work[idx].p_chain)
         {
@@ -44,17 +42,16 @@ job_t * create_job (subjob_payload_t * p_job_payload)
             return NULL;
         }
 
-        for (size_t jdx = 0; jdx < p_job->num_operations; jdx++)
+        for (size_t jdx = 0; jdx < p_job->num_operations; ++jdx)
         {
-            memcpy(&p_job->p_work[idx].p_chain[jdx].operation,
-                   &p_job_payload->op_groups[jdx].operation, sizeof(uint32_t));
+            p_job->p_work[idx].p_chain[jdx].operation = 
+            p_job_payload->op_groups[jdx].operation;
 
-            memcpy(&p_job->p_work[idx].p_chain[jdx].operand,
-                   &p_job_payload->op_groups[jdx].operand, sizeof(uint32_t));
+            p_job->p_work[idx].p_chain[jdx].operand =
+            p_job_payload->op_groups[jdx].operand;
         }
 
-        memcpy(&p_job->p_work[idx].iterations, 
-               &p_job_payload->num_iters, sizeof(uint32_t));
+        p_job->p_work[idx].iterations = p_job_payload->num_iters;
         p_job->p_work[idx].b_work_done  = false;
         p_job->p_work[idx].answer       = -1;
         p_job->p_work[idx].worker_sock  = -1;
@@ -72,19 +69,31 @@ job_t * create_job (subjob_payload_t * p_job_payload)
 
 void destroy_jobs ()
 {
-    for (size_t idx = 0; idx < jobs_list_len; idx++)
+    if (NULL == pp_jobs)
+    {
+        return;
+    }
+
+    for (size_t idx = 0; idx < jobs_list_len; ++idx)
     {
         if (NULL != pp_jobs[idx])
         {
-            for(size_t jdx = 0; jdx < pp_jobs[idx]->num_operations; jdx++)
+            for(size_t jdx = 0; jdx < pp_jobs[idx]->num_items; jdx++)
             {
-                clean_memory(pp_jobs[idx]->p_work[jdx].p_chain);
+                if (NULL != &pp_jobs[idx]->p_work[jdx])
+                {
+                    free(pp_jobs[idx]->p_work[jdx].p_chain);
+                }
+                else
+                {
+                    break;
+                }
+                
             }
             clean_memory(pp_jobs[idx]->p_work);
             clean_memory(pp_jobs[idx]);
         }
     }
-    clean_memory(pp_jobs);
 }
 
 /*** end of handle_jobs.c ***/

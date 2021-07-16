@@ -13,15 +13,18 @@ if __name__ == "__main__" and __package__ is None:
 
 import modules.connect_to_scheduler as cts
 import modules.help_msg as hm
-import modules.job as job
 import modules.pack_protocols as p_protocols
 
 serv_info: Tuple = ()
 
 def test_num_sz(num: int) -> bool:
     """
-    docstring goes here
+    @brief - a helper function to ensure any number passed is within the range of
+             0 - 2^32
+    @var 1 num - an integer value to check
+    @return - true if valid, false if out of the above mentioned range
     """
+
     if abs(num) <= 0xffffffff:
         return True
     else:
@@ -30,8 +33,12 @@ def test_num_sz(num: int) -> bool:
 
 def create_op_range(input_range: str) -> list:
     """
-    docstring goes here
+    @brief - a valid operand entry may consist of a abbreviated range, e.g.: 1-4
+             this is a helper function to conver the range into a valid list of numbers
+    @var 1 input_range - a str value consisting of the number range to convert
+    @return - a list of numbers within the range specified
     """
+
     range_list: list = []
     min = input_range[1]
     max = input_range[3]
@@ -46,8 +53,13 @@ def create_op_range(input_range: str) -> list:
 
 def valid_operand_check(operands: str) -> list:
     """
-    docstring goes here
+    @brief - a helper function to determine if the list of operands is valid
+             e.g.: that they are appropriate delimitted and meet the requirement
+             of 0 - 2^32
+    @var 1 operands - a string containing all the operands passed by the command line
+    @return - a list of each operand in their own list index
     """
+
     operand_list: list = []
     valid_input: str = "(-?[0-9]+(--?[0-9]+)?)"
     valid_input_range: str = "(-?[0-9]+--?[0-9]+)"
@@ -70,8 +82,14 @@ def valid_operand_check(operands: str) -> list:
 
 def valid_opchain_check(op_chain: str) -> list:
     """
-    docstring goes here
+    @brief - a helper function to ensure the list of operations/operands to be
+             performed on the operands list are valid. This includes a check on
+             valid operations per the platform creation guidelines.
+    @var 1 op_chain - a string of all operations to be performs on the operands list
+                      given from the command line
+    @return - a list of all operations groups to be performed
     """
+
     valid_operations = {
         "+": 0, "-": 1, "~": 6, "=<<": 8, "=>>": 7,
         "&": 3, "^": 5, "|": 4
@@ -107,9 +125,18 @@ def valid_opchain_check(op_chain: str) -> list:
 def create_payload(num_ops: int, op_chain: list, iter: int, 
                     num_items: int, items: list) -> bytes:
     """
-    docstring goes here
+    @brief - meant to create the submit job payload to be sent to the scheduler
+             to parse and hand out the work to the workers
+    @var 1 num_ops - an integer value of the number of operations in the op chain
+    @var 2 op_chain - a list containing all of the operations to perform
+    @var 3 iter - the number of iterations to perform (always 1)
+    @var 4 num_items - the number of operands to perform the operations on
+    @var 5 items - a list of all operands passed to the command line
+    @return - a bytes like object containing all job data required to be sent to the
+              scheduler
     """
-    job_packet = p_protocols.Submit_Job()
+
+    job_packet = p_protocols.Bytes()
     payload = job_packet.convert_to_bytes(int(num_ops))
 
     for _, group in enumerate(op_chain):
@@ -128,7 +155,12 @@ def create_payload(num_ops: int, op_chain: list, iter: int,
 
 def handle_submitter() -> None:
     """
-    docstring goes here
+    @brief - main submitter driver to receive the submitter application's 
+             command line arguments, call all helper functions to appropriately
+             generate the submit job packet, and send the submit job packet to 
+             the scheduler for work
+    @param(s) - N/A
+    @return - N/A
     """
     protocol_version = 1
     submit_job = 0
@@ -178,9 +210,8 @@ def handle_submitter() -> None:
         bytes_recv = conn_fd.recv(1024)
         job_id = int.from_bytes(bytes_recv, "big", signed=False)
         print(f"Job ID recv'd: {job_id}")
-    except IOError as send_err:
-        print("send error", send_err)
-        conn_fd.close()
+    except AttributeError:
         exit()
 
-handle_submitter()
+if __name__ == "__main__":
+    handle_submitter()

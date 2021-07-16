@@ -160,19 +160,12 @@ bool jobs_done (job_t * p_job)
         job_id = p_job->job_id;
         printf("Job ID: %u\n", job_id);
 
-        // retriev and print the item and answer for the work
+        // retrieve and print the item and answer for the work
         for (size_t idx = 0; idx < p_job->num_items; idx++)
         {
             item = p_job->p_work[idx].item;
-            printf("\tItem: %u --> ", item);
-            printf("Chain of Operations performed: { ");
-            for (size_t jdx = 0; jdx < p_job->num_operations; jdx++)
-            {
-                print_opchain(&p_job->p_work[idx].p_chain[jdx]);
-            }
-            printf("}\n");
             answer = p_job->p_work[idx].answer;
-            printf("\tAnswer: %d\n", answer);            
+            printf("\tItem: %u --> Answer: %d\n", item, answer);
         }
         return true;
     }

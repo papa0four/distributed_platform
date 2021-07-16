@@ -1,23 +1,24 @@
-CC				:= gcc
 
-TARGET			:= scheduler
+CC 			:= gcc
 
-#The directories, src, includes, objects, binary, and resources
-SRCDIR			:= src/scheduler
-INCDIR			:= src/includes
-TARGETDIR		:= bin
-BUILDDIR		:= objects
-SRCEXT			:= c
-HDREXT			:= h
-DEPEXT			:= d
-OBJEXT			:= o
+TARGET 		:= scheduler
 
-#flags and libraries
-CFLAGS			:= -g -Wall -Wextra -Werror -Wpedantic -std=c11
-LIB				:= -lm -lpthread -pthread
+#The Directories, Source, Includes, Objects, Binary and Resources
+SRCDIR		:= src/scheduler/
+INCDIR		:= src/scheduler/include
+TARGETDIR	:= bin
+BUILDDIR    := objects
+SRCEXT      := c
+HDREXT		:= h
+DEPEXT      := d
+OBJEXT      := o
 
-SOURCES			:= $(shell find $(SRCDIR) -type f -name *.$(SRCEXT))
-OBJECTS			:= $(patsubst $(SRCDIR)/%,$(BUILDDIR)/%,$(SOURCES:.$(SRCEXT)=.$(OBJEXT)))
+#Flag and libraries
+CFLAGS		:= -g -Wall -std=c11
+LIB			:= -lm -lpthread -pthread
+
+SOURCES     := $(shell find $(SRCDIR) -type f -name *.$(SRCEXT))
+OBJECTS     := $(patsubst $(SRCDIR)/%,$(BUILDDIR)/%,$(SOURCES:.$(SRCEXT)=.$(OBJEXT)))
 
 all: directories $(TARGET)
 
@@ -31,8 +32,9 @@ $(TARGET): $(OBJECTS)
 	$(CC) $(OBJECTS) $(CFLAGS) $(LIB) -o $(TARGETDIR)/$(TARGET)
 
 clean:
-	-rm objects/*
-	-rm bin/*
+	-rm $(SRCDIR)*.o
+	-rm $(TARGETDIR)/*
+	-rm $(BUILDDIR)/*
 
 lint:
 	clang-tidy src/*.c src/include/*.h
@@ -42,8 +44,7 @@ $(BUILDDIR)/%.$(OBJEXT): $(SRCDIR)/%.$(SRCEXT)
 	$(CC) $(CFLAGS) $(INC) -c -o $@ $<
 	@$(CC) $(CFLAGS) $(INCDEP) -MM $(SRCDIR)/$*.$(SRCEXT) > $(BUILDDIR)/$*.$(DEPEXT)
 	@cp -f $(BUILDDIR)/$*.$(DEPEXT) $(BUILDDIR)/$*.$(DEPEXT).tmp
-	@cp -f $(BUILDDIR)/$*.$(OBJEXT) $(BUILDDIR)/$*.$(OBJEXT).tmp
-	@sed -e 's|.*:|$(BUILDDIR)/$*.$(OBJEXT):|' < $(BUILDDIR)/$*.(DEPEXT).tmp > $(BUILDDIR)/$*.$(DEPEXT)
+	@sed -e 's|.*:|$(BUILDDIR)/$*.$(OBJEXT):|' < $(BUILDDIR)/$*.$(DEPEXT).tmp > $(BUILDDIR)/$*.$(DEPEXT)
 	@sed -e 's/.*://' -e 's/\\$$//' < $(BUILDDIR)/$*.$(DEPEXT).tmp | fmt -1 | sed -e 's/^ *//' -e 's/$$/:/' >> $(BUILDDIR)/$*.$(DEPEXT)
 	@rm -f $(BUILDDIR)/$*.$(DEPEXT).tmp
 

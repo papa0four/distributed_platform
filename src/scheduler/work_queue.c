@@ -163,7 +163,7 @@ work_queue_t * resize_wqueue ()
 
 bool wqueue_destroy ()
 {
-    if (NULL == p_wqueue)
+    if ((NULL == p_wqueue) || (NULL == p_wqueue->p_work))
     {
         errno = EINVAL;
         perror("pointer to container passed is empty");

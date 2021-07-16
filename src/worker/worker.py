@@ -16,6 +16,14 @@ import modules.connect_to_scheduler as cts
 import modules.pack_protocols as p_protocols
 
 def unpack_work(work: bytes) -> Dict:
+    """
+    @brief - unpacks the work sent from the scheduler and appropriately
+             packs the task list in order to begin computing the operations
+    @var 1 work - a bytes like object containing the payload of the work packet
+    @return - a dictionary containing all necessary information to computer the
+              work's answer based upon the operations and operands
+    """
+
     task = struct.unpack('<' + ('I' * (len(work)//4)), work)
     item = task[0]
     num_ops = task[1]
@@ -30,33 +38,58 @@ def unpack_work(work: bytes) -> Dict:
     return task_list
 
 def computation(item: int, num_ops: int, op_chain: Tuple, iterations: int) -> int:
+    """
+    @brief - iterates over the dictionary and appropriately computes the answer
+             based upon the work presented.
+    @var 1 item - the operand to perform the work on
+    @var 2 num_ops - the number of operations to perform on the item
+    @var 3 op_chain - the actual operations to perform on the item
+    @var 4 iterations - the number of times to perform these operations (always 1)
+    return - returns the computed answer based upon the operands and operations
+    """
+    
     #iterations
-    for n in range(iterations):
-        #iterate over every operation in op_chain
-        for i in range(0, num_ops * 2, 2):
-            # ADD
-            if op_chain[i] == 0:
-                item = item + int(op_chain[i + 1])
-            elif op_chain[i] == 1:
-                item = item - int(op_chain[i + 1])
-            elif op_chain[i] == 2:
-                item = int(op_chain[i + 1]) - item
-            elif op_chain[i] == 3:
-                item = item & int(op_chain[i + 1])
-            elif op_chain[i] == 4:
-                item = item | int(op_chain[i + 1])
-            elif op_chain[i] == 5:
-                item = item ^ int(op_chain[i + 1])
-            elif op_chain[i] == 6:
-                item = ~item
-            elif op_chain[i] == 7:
-                item = item >> int(op_chain[i + 1])
-            elif op_chain[i] == 8:
-                item = item << int(op_chain[i + 1])
-    print("computation complete...")
-    return item
+    try:
+        for n in range(iterations):
+            #iterate over every operation in op_chain
+            for i in range(0, num_ops * 2, 2):
+                # ADD
+                if op_chain[i] == 0:
+                    item = item + int(op_chain[i + 1])
+                elif op_chain[i] == 1:
+                    item = item - int(op_chain[i + 1])
+                elif op_chain[i] == 2:
+                    item = int(op_chain[i + 1]) - item
+                elif op_chain[i] == 3:
+                    item = item & int(op_chain[i + 1])
+                elif op_chain[i] == 4:
+                    item = item | int(op_chain[i + 1])
+                elif op_chain[i] == 5:
+                    item = item ^ int(op_chain[i + 1])
+                elif op_chain[i] == 6:
+                    item = ~item
+                elif op_chain[i] == 7:
+                    item = item >> int(op_chain[i + 1])
+                elif op_chain[i] == 8:
+                    item = item << int(op_chain[i + 1])
+        print("computation complete...")
+        return item
+    except IndexError:
+        print("could not perform calculation on op chain with one operation")
+        print("shutting down...")
+        exit()
 
 def handle_work() -> Tuple:
+    """
+    @brief - sends the query work packet and waits for the response containing
+             the expected work to be performed. Then calls the computation helper
+             function in order to retrieve the answer before crafting the submit work
+             packet and sending the answer to the scheduler
+    @param(s) - N/A
+    @return - a tuple containing the answer and the socket file descriptor of the
+              scheduler
+    """
+    
     VERSION = 1
     QUERY_WORK = 3
     item = 0
@@ -101,6 +134,13 @@ def handle_work() -> Tuple:
         exit()
 
 def submit_work_answer() -> int:
+    """
+    @brief - receives the answer to the requested work from the handle_work
+             function and sends the answer back to the scheduler
+    @param(s) - N/A
+    @return - the socket file descriptor for the scheduler
+    """
+    
     conn_fd, answer = handle_work()
     VERSION = 1
     SUBMIT_WORK = 4
@@ -119,6 +159,15 @@ def submit_work_answer() -> int:
         return -1
 
 def main():
+    """
+    @brief - the main worker driver that connects to the scheduler
+             and stays alive for the duration of the life of the platform
+             constantly querying for work, parsing the data, and sending the
+             answer back to the scheduler
+    @param(s) - N/A
+    @return - N/A
+    """
+    
     running = True
     sleep = 1
     while(running):

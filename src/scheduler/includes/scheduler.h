@@ -24,6 +24,7 @@
 #include "global_data.h"
 #include "handle_jobs.h"
 
+// predefined macros to avoid magic number usage
 #define SIGINT          2
 #define BACKLOG         3
 #define TV_TIMEOUT      5
@@ -67,7 +68,12 @@ uint16_t get_port(int argc, char ** argv);
 void * handle_broadcast (void * p_port);
 
 /**
- * 
+ * @brief - a helper function to handle the workers connecting to the scheduler
+ *          and create a thread for each
+ * @param scheduler_fd - the socket file descriptor created for the scheduler
+ * @param scheduler - the scheduler's address info
+ * @param scheduler_len - the size of the scheduler struct for socket communications
+ * @return - N/A
  */
 void handle_worker_connections (int scheduler_fd, struct sockaddr_in scheduler,
                                 socklen_t scheduler_len);
@@ -94,21 +100,21 @@ header_t * unpack_header (int client_conn);
 subjob_payload_t * unpack_payload (int client_conn);
 
 /**
- * retrieve work
+ * @brief - appropriately dequeue's work from the work queue, assigns the worker's
+ *          socket file descriptor, packs the job packet, and sends the data to the
+ *          worker
+ * @param worker_fd - the socket file descriptor of the worker assigned to the task
+ * @return - N/A
  */
 void send_task_to_worker (int worker_fd);
 
 /**
- * 
- */
-void recv_computation (int worker_conn);
-
-/**
- * @brief - a helper function to print the opchain to the scheduler
- * @param p_chain - a pointer to the operations chain to print
+ * @brief - receives the SUBMIT_JOB packet from the worker once a task is complete
+ *          and passes the answer to the recv_answer function
+ * @param worker_fd - the socket file descriptor for the worker submitting the answer
  * @return - N/A
  */
-void print_opchain (opchain_t * p_chain);
+void recv_computation (int worker_conn);
 
 /**
  * @brief - used as a helper function in order to free and NULL'ify memory
@@ -120,7 +126,12 @@ void print_opchain (opchain_t * p_chain);
 void clean_memory (void * memory_obj);
 
 /**
- * function passed to the worker thread
+ * @brief - the main worker thread function that is passed upon worker/submitter
+ *          thread creation. worker_func then calls the determine operation function
+ *          that handles each packet received by the scheduler appropriately
+ * @param worker_conn - the socket file descriptor for the connection to the scheduler
+ * @return - returns NULL on success and error, used for pthread_create, but errors 
+ *           are handled within appropriately
  */
 void * worker_func (void * worker_conn);
 

@@ -11,6 +11,7 @@ void sigint_handler (int signo)
         g_running = false;
         destroy_jobs();
         wqueue_destroy();
+        clean_memory(pp_jobs);
     }
 }
 
@@ -156,9 +157,6 @@ void * handle_broadcast (void * p_port)
                 return NULL;
             }
 
-            // printf("broadcast_msg recv'd from: %s:%hu\n", 
-            //         inet_ntoa(client.sin_addr), ntohs(client.sin_port));
-
             bytes_sent = sendto(broadcast_socket, op_port, sizeof(uint16_t), 0, 
                                 (struct sockaddr *)&client, client_len);
             if (0 >= bytes_sent)
@@ -194,7 +192,6 @@ header_t * unpack_header (int client_conn)
     uint32_t    operation   = 0;
 
     bytes_recv = recv(client_conn, &version, sizeof(uint32_t), 0);
-    // printf("version recv'd: %u\n", ntohl(version));
     if (0 > bytes_recv)
     {
         perror("version recv");
@@ -228,8 +225,9 @@ header_t * unpack_header (int client_conn)
         perror("could not allocate packet header struct");
         return NULL;
     }
-    p_packet_hdr->operation = ntohl(operation);
+
     p_packet_hdr->version   = ntohl(version);
+    p_packet_hdr->operation = ntohl(operation);
 
     return p_packet_hdr;
 }
@@ -319,8 +317,6 @@ static opchain_t * recv_opchain (int client_conn, uint32_t num_ops)
         operand   = ntohl(operand);
         memcpy(&p_ops[idx].operation, &operation, sizeof(uint32_t));
         memcpy(&p_ops[idx].operand, &operand, sizeof(uint32_t));
-
-        // printf("operation: %u\toperand: %u\n", p_ops[idx].operation, p_ops[idx].operand);
     }
 
     return p_ops;
@@ -438,8 +434,7 @@ static item_t * recv_items (int client_conn, uint32_t num_items)
         }
         item = ntohl(item);
         memcpy(&p_items[idx].item, &item, sizeof(uint32_t));
-        // printf("item: %u\n", p_items[idx].item);
-    }
+   }
 
     return p_items;
 }
@@ -536,7 +531,6 @@ subjob_payload_t * unpack_payload (int client_conn)
         fprintf(stderr, "no operations recv\n");
         goto ERROR;
     }
-    // printf("number of operations: %u\n", num_operations);
 
     p_ops = recv_opchain(client_conn, num_operations);
     if (NULL == p_ops)
@@ -560,7 +554,6 @@ subjob_payload_t * unpack_payload (int client_conn)
         clean_memory(p_ops);
         goto ERROR;
     }
-    // printf("number of items: %u\n", num_items);
 
     p_items = recv_items(client_conn, num_items);
     if (NULL == p_items)
@@ -570,7 +563,7 @@ subjob_payload_t * unpack_payload (int client_conn)
         goto ERROR;
     }
 
-    p_unpacked = pack_payload_struct (num_operations, p_ops, num_iters,
+    p_unpacked = pack_payload_struct(num_operations, p_ops, num_iters,
                         num_items, p_items);
     if (NULL == p_unpacked)
     {
@@ -630,57 +623,6 @@ static int handle_working_socket (struct sockaddr_in scheduler)
     return scheduler_fd;
 }
 
-void print_opchain (opchain_t * p_chain)
-{
-    if (NULL == p_chain)
-    {
-        errno = EINVAL;
-        perror("operation chain passed is NULL");
-        return;
-    }
-    switch(p_chain->operation)
-    {
-        case ADD:
-            printf("+%u ", p_chain->operand);
-            break;
-
-        case SUBR:
-            printf("-%u ", p_chain->operand);
-            break;
-
-        case SUBL:
-            printf("%u- ", p_chain->operand);
-            break;
-
-        case AND:
-            printf("&%u ", p_chain->operand);
-            break;
-
-        case OR:
-            printf("|%u ", p_chain->operand);
-            break;
-
-        case XOR:
-            printf("^%u ", p_chain->operand);
-            break;
-
-        case NOT:
-            printf("~ ");
-            break;
-
-        case ROLR:
-            printf("=>>%u ", p_chain->operand);
-            break;
-
-        case ROLL:
-            printf("=<<%u ", p_chain->operand);
-            break;
-
-        default:
-            fprintf(stderr, "invalid operation/operand combination found\n");
-    }
-}
-
 void clean_memory (void * memory_obj)
 {
     if (NULL == memory_obj)
@@ -720,7 +662,7 @@ void send_task_to_worker (int worker_fd)
                 &p_work->p_chain[idx].operand, sizeof(uint32_t));
         offset += sizeof(uint32_t);
     }
-    // offset += sizeof(uint32_t);
+
     memcpy((work_buffer + offset), &p_work->iterations, sizeof(uint32_t));
     uint32_t pack_sz = ((sizeof(uint32_t)) + (sizeof(uint32_t)) +
                         ((num_ops * sizeof(uint32_t)) * num_ops) + 
@@ -731,7 +673,6 @@ void send_task_to_worker (int worker_fd)
         fprintf(stderr, "could not send work packet to worker\n");
         return;
     }
-
 }
 
 void recv_computation (int worker_conn)
@@ -752,7 +693,6 @@ void recv_computation (int worker_conn)
         return;
     }
     recv_answer(worker_conn, answer);
-
 }
 
 static ssize_t determine_operation (int client_sock)
@@ -772,6 +712,7 @@ static ssize_t determine_operation (int client_sock)
 
     if (VERSION != p_hdr->version)
     {
+        clean_memory(p_hdr);
         return -1;
     }
 
@@ -829,6 +770,7 @@ static ssize_t determine_operation (int client_sock)
             break;
 
         case SHUTDOWN:
+            clean_memory(p_hdr);
             pthread_mutex_lock(&running_mutex);
             bytes_sent = send(client_sock, &shutdown, sizeof(int), 0);
             if (0 >= bytes_sent)
@@ -837,10 +779,7 @@ static ssize_t determine_operation (int client_sock)
             }
             g_running = false;
             pthread_mutex_unlock(&running_mutex);
-            destroy_jobs();
-            wqueue_destroy();
             close(client_sock);
-            clean_memory(p_hdr);
             break;
 
         default:
@@ -900,7 +839,7 @@ void handle_worker_connections (int scheduler_fd, struct sockaddr_in scheduler,
         select_ret = select(scheduler_fd + 1, &read_fd, NULL, NULL, &tv);
         if (-1 == select_ret)
         {
-            fprintf(stderr, "error on select call\n");
+            fprintf(stderr, "handle worker - error on select call\n");
         }
         else if ((0 < select_ret) && (FD_ISSET(scheduler_fd, &read_fd)))
         {
@@ -944,6 +883,7 @@ void handle_worker_connections (int scheduler_fd, struct sockaddr_in scheduler,
                 break;
             }
         }
+        idx++;
     }
 }
 
@@ -1006,9 +946,10 @@ int main (int argc, char ** argv)
     }
     
     handle_worker_connections(scheduler_fd, scheduler, scheduler_len);
-    
     close(scheduler_fd);
-
+    destroy_jobs();
+    wqueue_destroy();
+    clean_memory(pp_jobs);
     return EXIT_SUCCESS;    
 }
 

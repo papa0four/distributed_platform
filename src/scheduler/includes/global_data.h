@@ -68,7 +68,7 @@ ssize_t populate_jobs_and_queue (job_t * p_job);
 job_t * find_job (uint32_t job_id);
 
 /**
- * @brief - receive answer to each tasked work from the worker
+ * @brief - packs job structure with the answer and sets the done flag
  * @param worker_conn - the file descriptor of the worker's connection
  * @param answer - the answer calculated answer of the work passed
  * @return - N/A

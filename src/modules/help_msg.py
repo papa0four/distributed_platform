@@ -1,4 +1,11 @@
 def usage_msg():
+    """
+    brief - meant to be displayed to user the in order to get an understanding of how to
+    operate the submitter application when executed with the '-h' or '--help' flag
+    param(s) - N/A
+    return - N/A
+    """
+    
     print("|+++++++++++++++++++++++++++++++HELP MANUAL+++++++++++++++++++++++++++++++|")
     print("|\n| !!! all arguments after -n flag must be wrapped in quotes")
     print("|\n| NOTE: if using multiple operands, they must be comma delimitted\n|")

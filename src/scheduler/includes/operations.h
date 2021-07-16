@@ -26,7 +26,11 @@
 #define ROLL    8
 
 /**
- * opchain struct
+ * @brief - contains the opchain group data
+ * @member operation - an unsigned 32 bit integer determining the mathematical
+ *                     operation to perform
+ * @member operand - an unsigned 32 bit integer determining the operand to perform
+ *                   the operation upon
  */
 typedef struct _opchain_t
 {
@@ -35,7 +39,9 @@ typedef struct _opchain_t
 } opchain_t;
 
 /**
- * operand types
+ * @brief - an item structure containing the individual item to perform the op_chain
+ *          on
+ * @member item - the individual item stored as an unsigned 32 bit integer
  */
 typedef struct _item_t
 {
@@ -43,7 +49,11 @@ typedef struct _item_t
 } item_t;
 
 /**
- * header stuffs
+ * @brief - a structure containing the platform packet protocol header data
+ * @member version - an unsigned 32 bit integer containing the packet protocol
+ *                   version
+ * @member operation - an unsigned 32 bit integer containing the operation of
+ *                     the packet
  */
 typedef struct _header_t
 {
@@ -52,7 +62,17 @@ typedef struct _header_t
 } header_t;
 
 /**
- * struct info:
+ * @brief - a structure containing all the appropriate data received from the
+ *          submitter
+ * @member num_operations - an unsigned 32 bit integer containing the size of
+ *                          the op chain
+ * @member op_groups - an array of operation/operand groups to perform against
+ *                     the item
+ * @member num_iters - an unsigned 32 bit integer containing the number of times
+ *                     the op chain will be performed against the item (always 1)
+ * @member num_items - an unsigned 32 bit integer containing the number of items
+ *                     to perform the operations chain against
+ * @member items - an array of items passed by the submitter
  */
 typedef struct _submit_job_payload_t
 {
