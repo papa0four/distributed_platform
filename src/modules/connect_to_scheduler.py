@@ -14,10 +14,20 @@ if __name__ == "__main__" and __package__ is None:
 import modules.broadcast as bc
 
 def connect_to_scheduler() -> int:
-    serv_info = bc.broadcast_and_recv_working_port()
-    conn_fd = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    conn_fd.setsockopt(socket.SOL_SOCKET, 
-                        socket.SO_REUSEADDR, 1)
-    conn_fd.connect((serv_info))
-    print(f"connection made to scheduler via {serv_info[0]}:{serv_info[1]}")
-    return conn_fd
+    try:
+        serv_info = bc.broadcast_and_recv_working_port()
+        conn_fd = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        conn_fd.setsockopt(socket.SOL_SOCKET, 
+                            socket.SO_REUSEADDR, 1)
+    except TypeError:
+        exit()
+    try:
+        conn_fd.connect((serv_info))
+        if conn_fd is None:
+            print("connection unexpectedly closed...")
+            exit()
+        print(f"connection made to scheduler via {serv_info[0]}:{serv_info[1]}")
+        return conn_fd
+    except IOError:
+        print(f"connection unexpectedly closed... ")
+    

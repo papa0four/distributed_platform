@@ -14,6 +14,17 @@
 #define SUBMIT_WORK     4
 #define SHUTDOWN        5
 
+// mathematical macros
+#define ADD     0
+#define SUBR    1
+#define SUBL    2
+#define AND     3
+#define OR      4
+#define XOR     5
+#define NOT     6
+#define ROLR    7
+#define ROLL    8
+
 /**
  * opchain struct
  */

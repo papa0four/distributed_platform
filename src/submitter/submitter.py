@@ -104,19 +104,6 @@ def valid_opchain_check(op_chain: str) -> list:
         chain_of_ops.append(op_group)
     return chain_of_ops
 
-def create_protocol_header(version: int, operation: int) -> Tuple:
-    """
-    docstring goes here
-    """
-    header: Tuple = ()
-
-    protocol_header = p_protocols.Packet_Protocol(version, operation)
-    job_packet = p_protocols.Submit_Job()
-
-    header = job_packet.convert_to_bytes(protocol_header.version)
-    header += job_packet.convert_to_bytes(protocol_header.operation)
-    return header
-
 def create_payload(num_ops: int, op_chain: list, iter: int, 
                     num_items: int, items: list) -> bytes:
     """
@@ -157,7 +144,17 @@ def handle_submitter() -> None:
     
     if args.shutdown == True:
         shutdown = 5
-        header = create_protocol_header(protocol_version, shutdown)
+        header = p_protocols.Packet_Protocol(protocol_version, shutdown)
+        hdr = header.create_protocol_header(protocol_version, shutdown)
+        try:
+            print("sending twice?")
+            bytes_sent = conn_fd.send(hdr)
+            if (bytes_sent <= 0):
+                print("could not send shutdown flag");
+        except IOError as senderr:
+            print(f"could not establish send connection to scheduler: {senderr}")
+            conn_fd.close()
+            exit()
         print(f"sending shutdown flag...")
         exit()
 
@@ -169,21 +166,22 @@ def handle_submitter() -> None:
 
     op_list = valid_operand_check(operation_list[0])
     op_chain = valid_opchain_check(operation_chain[0])
-    header = create_protocol_header(protocol_version, submit_job)
+    header = p_protocols.Packet_Protocol(protocol_version, submit_job)
+    hdr = header.create_protocol_header(protocol_version, submit_job)
     payload = create_payload(len(op_chain), op_chain, iterations, 
                 len(op_list), op_list)
-    packet = header + payload
-    print(f"packet to send {packet}")
+    packet = hdr + payload
     try:
         bytes_sent = conn_fd.send(packet)
         if bytes_sent <= 0:
             print("no bytes sent to scheduler")
         print(f"job submitted {len(packet)} bytes sent ...")
+        bytes_recv = conn_fd.recv(1024)
+        job_id = int.from_bytes(bytes_recv, "big", signed=False)
+        print(f"Job ID recv'd: {job_id}")
     except IOError as send_err:
         print("send error", send_err)
         conn_fd.close()
         exit()
-
-    bytes_recv = conn_fd.recv(1024)
 
 handle_submitter()

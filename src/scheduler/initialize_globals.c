@@ -118,12 +118,12 @@ void recv_answer (int worker_conn, int32_t answer)
         return;
     }
     pthread_mutex_lock(&jobs_list_mutex);
-    for (size_t idx = 0; idx < pp_jobs[idx]->num_items; idx++)
+    for (size_t idx = 0; idx < jobs_list_len; idx++)
     {
         for (size_t jdx = 0; jdx < pp_jobs[idx]->num_items; jdx++)
         {
             if ((worker_conn == pp_jobs[idx]->p_work[jdx].worker_sock) &&
-                (true == pp_jobs[idx]->p_work[jdx].b_work_done))
+                (false == pp_jobs[idx]->p_work[jdx].b_work_done))
             {
                 pp_jobs[idx]->p_work[jdx].answer        = answer;
                 pp_jobs[idx]->p_work[jdx].b_work_done   = true;
@@ -165,10 +165,10 @@ bool jobs_done (job_t * p_job)
         {
             item = p_job->p_work[idx].item;
             printf("\tItem: %u --> ", item);
-            printf("Chain of Operations performed: {");
+            printf("Chain of Operations performed: { ");
             for (size_t jdx = 0; jdx < p_job->num_operations; jdx++)
             {
-                print_opchain(p_job->p_work[idx].p_chain);
+                print_opchain(&p_job->p_work[idx].p_chain[jdx]);
             }
             printf("}\n");
             answer = p_job->p_work[idx].answer;
@@ -188,8 +188,7 @@ void populate_wqueue (job_t * p_job)
         return;
     }
     bool b_enqueued = false;
-
-    for (size_t idx = 0; idx < jobs_list_len; idx++)
+    for (size_t idx = 0; idx < p_job->num_items; idx++)
     {
         b_enqueued = enqueue_work(&p_job->p_work[idx]);
         if (false == b_enqueued)

@@ -22,7 +22,7 @@ def broadcast_and_recv_working_port() -> Tuple:
     broadcast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     broadcast_socket.setsockopt(socket.SOL_SOCKET, 
                         socket.SO_REUSEADDR | socket.SO_BROADCAST, 1)
-    broadcast_socket.settimeout(5)
+    broadcast_socket.settimeout(10)
 
     scheduler_info: Tuple()
 
