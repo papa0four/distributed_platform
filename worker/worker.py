@@ -27,7 +27,7 @@ def unpack_work(work: bytes) -> Dict:
     task = struct.unpack('<' + ('I' * (len(work)//4)), work)
     item = task[0]
     num_ops = task[1]
-    op_chain = task[2:4]
+    op_chain = task[2:]
     iterations = 1
     task_list = {
         "Item": item,
@@ -50,28 +50,27 @@ def computation(item: int, num_ops: int, op_chain: Tuple, iterations: int) -> in
     
     #iterations
     try:
-        for n in range(iterations):
-            #iterate over every operation in op_chain
-            if len(op_chain) == 2:
-                if op_chain[0] == 0:
-                    item = item + int(op_chain[1])
-                elif op_chain[0] == 1:
-                    item = item - int(op_chain[1])
-                elif op_chain[0] == 2:
-                    item = int(op_chain[1]) - item
-                elif op_chain[0] == 3:
-                    item = item & int(op_chain[1])
-                elif op_chain[0] == 4:
-                    item = item | int(op_chain[1])
-                elif op_chain[0] == 5:
-                    item = item ^ int(op_chain[1])
-                elif op_chain[0] == 6:
-                    item = ~item
-                elif op_chain[0] == 7:
-                    item = item >> int(op_chain[1])
-                elif op_chain[0] == 8:
-                    item = item << int(op_chain[1])
-            else:
+        if num_ops == 1:
+            if op_chain[0] == 0:
+                item = item + int(op_chain[1])
+            elif op_chain[0] == 1:
+                item = item - int(op_chain[1])
+            elif op_chain[0] == 2:
+                item = int(op_chain[1]) - item
+            elif op_chain[0] == 3:
+                item = item & int(op_chain[1])
+            elif op_chain[0] == 4:
+                item = item | int(op_chain[1])
+            elif op_chain[0] == 5:
+                item = item ^ int(op_chain[1])
+            elif op_chain[0] == 6:
+                item = ~item
+            elif op_chain[0] == 7:
+                item = item >> int(op_chain[1])
+            elif op_chain[0] == 8:
+                item = item << int(op_chain[1])
+        else:
+            for n in range(iterations):
                 for i in range(0, num_ops * 2, 2):
                     if op_chain[i] == 0:
                         item = item + int(op_chain[i + 1])
@@ -114,7 +113,7 @@ def handle_work() -> Tuple:
     item = 0
     num_ops = 0
     op_chain: Tuple = ()
-    iterations = 1
+    iterations = 0
     try:
         conn_fd = cts.connect_to_scheduler()
         if conn_fd == None:
@@ -143,8 +142,8 @@ def handle_work() -> Tuple:
                 item = val
             elif key == "Num Ops":
                 num_ops = val
-            # elif key == "Iters":
-            #     iterations = val
+            elif key == "Iters":
+                iterations = val
         
         answer = computation(item, num_ops, op_chain, iterations)
         return (conn_fd, answer)

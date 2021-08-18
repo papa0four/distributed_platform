@@ -50,7 +50,7 @@ extern pthread_t worker_threads[MAX_CLIENTS];
  * @param - N/A
  * @return - 0 on successful initialization and -1 on error
  */
-ssize_t initialize_global_data ();
+int initialize_global_data ();
 
 /**
  * @brief - receives a job and populates the global jobs list before taking
@@ -61,7 +61,7 @@ ssize_t initialize_global_data ();
  * @return - returns the job id (index of the jobs list) upon successful addition
  *           to the jobs list/work queue or -1 on error
  */
-ssize_t populate_jobs_and_queue (job_t * p_job);
+int populate_jobs_and_queue (job_t * p_job);
 
 /**
  * @brief - iterates over the global list of jobs to find specific job

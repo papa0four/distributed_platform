@@ -1,3 +1,4 @@
+#include "../includes/global_data.h"
 #include "../includes/scheduler.h"
 
 work_queue_t * wqueue_init()

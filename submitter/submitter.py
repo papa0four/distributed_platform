@@ -3,6 +3,7 @@
 import argparse
 import re
 from typing import Tuple
+import sys
 
 if __name__ == "__main__" and __package__ is None:
     from sys import path
@@ -63,9 +64,17 @@ def valid_operand_check(operands: str) -> list:
     operand_list: list = []
     valid_input: str = "(-?[0-9]+(--?[0-9]+)?)"
     valid_input_range: str = "(-?[0-9]+--?[0-9]+)"
+    if ',' not in operands:
+        if re.fullmatch(valid_input, operands) is None:
+            print(f"{operands} is not a valid value")
+            return []
+        else:
+            operand_list.append(operands)
+            return operand_list
+
     for operand in operands.split(','):
         if re.fullmatch(valid_input, operand) is None:
-            print(operand, " is not a valid value")
+            print(f"{operand} is not a valid value")
             return []
         else:
             valid_range_check = '([0-9]+)(-?)([0-9]+)'
@@ -94,21 +103,21 @@ def valid_opchain_check(op_chain: str) -> list:
         "+": 0, "-": 1, "~": 6, "=<<": 8, "=>>": 7,
         "&": 3, "^": 5, "|": 4
     }
-    valid_input = re.compile(r"((-?|[0-9]+|\+|-|=>>|=<<|&|\^|\||){1}([0-9]+|-{1}|~))")
+    valid_input = re.compile(r"(([0-9]+|\+|-|=>>|=<<|&|\^|\||){1}([0-9]+|-{1}|~))")
     operation: str
     operand: str
     op_group: tuple
     chain_of_ops: list = []
     split_chain = op_chain
 
-    if ',' not in split_chain:
+    if ',' not in op_chain:
         if re.fullmatch(valid_input, op_chain) is None:
-            print(f"Invalid value: {op_chain}")
+            print(f"Invalid value single: {split_chain}\ttype: {type(split_chain)}")
             return []
     else:
         for split in split_chain.split(','):
             if re.fullmatch(valid_input, split) is None:
-                print(f"Invalid value: {split}")
+                print(f"Invalid value multiple: {split}\ttype: {type(split)}")
                 return []
 
     for item in valid_input.finditer(op_chain):
@@ -171,9 +180,12 @@ def handle_submitter() -> None:
     submit_job = 0
     iterations = 1
     conn_fd = cts.connect_to_scheduler()
+    for i in range(1, len(sys.argv)):
+        if sys.argv[i][0] == '-' and sys.argv[i][1].isdigit():
+            sys.argv[i] = f" {sys.argv[i]}"
     parser = argparse.ArgumentParser(description='enter operation chain to be processed.')
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument('-n', dest="options", nargs='+')
+    parser.add_argument('-n', dest="options", nargs='+', type=str)
     parser.add_argument('-s', dest="shutdown", action='store_true')
     parser.add_argument('-h', '--help', dest="help", action='store_true')
     args = parser.parse_args()
@@ -185,7 +197,7 @@ def handle_submitter() -> None:
         try:
             bytes_sent = conn_fd.send(hdr)
             if (bytes_sent <= 0):
-                print("could not send shutdown flag");
+                print("could not send shutdown flag")
         except IOError as senderr:
             print(f"could not establish send connection to scheduler: {senderr}")
             conn_fd.close()
@@ -203,7 +215,10 @@ def handle_submitter() -> None:
         exit()
 
     op_list = valid_operand_check(operation_list[0])
-    op_chain = valid_opchain_check(operation_chain[0])
+    if len(operation_chain) > 1:
+        op_chain = valid_opchain_check(operation_chain[1])
+    else:
+        op_chain = valid_opchain_check(operation_chain[0])
     header = p_protocols.Packet_Protocol(protocol_version, submit_job)
     hdr = header.create_protocol_header(protocol_version, submit_job)
     payload = create_payload(len(op_chain), op_chain, iterations, 

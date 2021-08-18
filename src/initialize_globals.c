@@ -11,7 +11,7 @@ volatile bool      g_running;
 int                num_clients;
 pthread_t          worker_threads[MAX_CLIENTS];
 
-ssize_t initialize_global_data ()
+int initialize_global_data ()
 {
     g_running = true;
 
@@ -73,7 +73,7 @@ ssize_t initialize_global_data ()
     return 0;
 }
 
-ssize_t populate_jobs_and_queue (job_t * p_job)
+int populate_jobs_and_queue (job_t * p_job)
 {
     if (NULL == p_job)
     {

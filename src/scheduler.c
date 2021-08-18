@@ -95,9 +95,10 @@ static struct addrinfo setup_scheduler (struct addrinfo * hints, int socket_type
  */
 static int create_socket (struct addrinfo * hints, char * str_port, int sockopt_flag)
 {
-    int         sock_fd             = 0;
-    int         reuse               = 1;
-    int         ret_val             = -1;
+    int sock_fd     = 0;
+    int reuse       = 1;
+    int ret_val     = -1;
+
     struct addrinfo * serv_info;
     struct addrinfo * p_addr;
 
@@ -140,8 +141,8 @@ void * handle_broadcast (void * p_port)
 {
     struct sockaddr_storage cli_address     = { 0 };
     socklen_t       client_len              = sizeof(cli_address);
+    
     struct addrinfo hints                   = { 0 };
-    // initialize hints structure
     hints.ai_socktype = SOCK_DGRAM;
     hints.ai_flags = AI_PASSIVE;
     hints.ai_family = AF_UNSPEC; // for ipv4
