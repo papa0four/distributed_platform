@@ -39,6 +39,12 @@ typedef struct _opchain_t
     uint32_t operand;
 } opchain_t;
 
+typedef struct header
+{
+    uint32_t version;
+    uint32_t operation;
+} header_t;
+
 /**
  * @brief - an item structure containing the individual item to perform the op_chain
  *          on

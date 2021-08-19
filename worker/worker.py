@@ -4,6 +4,7 @@ import struct
 from typing import Dict, Tuple
 import socket
 import time
+import sys
 
 if __name__ == "__main__" and __package__ is None:
     from sys import path
@@ -27,8 +28,8 @@ def unpack_work(work: bytes) -> Dict:
     task = struct.unpack('<' + ('I' * (len(work)//4)), work)
     item = task[0]
     num_ops = task[1]
-    op_chain = task[2:]
-    iterations = 1
+    op_chain = task[2:-1]
+    iterations = task[-1]
     task_list = {
         "Item": item,
         "Num Ops": num_ops,
@@ -48,27 +49,27 @@ def computation(item: int, num_ops: int, op_chain: Tuple, iterations: int) -> in
     return - returns the computed answer based upon the operands and operations
     """
     
-    #iterations
     try:
         if num_ops == 1:
-            if op_chain[0] == 0:
-                item = item + int(op_chain[1])
-            elif op_chain[0] == 1:
-                item = item - int(op_chain[1])
-            elif op_chain[0] == 2:
-                item = int(op_chain[1]) - item
-            elif op_chain[0] == 3:
-                item = item & int(op_chain[1])
-            elif op_chain[0] == 4:
-                item = item | int(op_chain[1])
-            elif op_chain[0] == 5:
-                item = item ^ int(op_chain[1])
-            elif op_chain[0] == 6:
-                item = ~item
-            elif op_chain[0] == 7:
-                item = item >> int(op_chain[1])
-            elif op_chain[0] == 8:
-                item = item << int(op_chain[1])
+            for n in range(iterations):
+                if op_chain[0] == 0:
+                    item = item + int(op_chain[1])
+                elif op_chain[0] == 1:
+                    item = item - int(op_chain[1])
+                elif op_chain[0] == 2:
+                    item = int(op_chain[1]) - item
+                elif op_chain[0] == 3:
+                    item = item & int(op_chain[1])
+                elif op_chain[0] == 4:
+                    item = item | int(op_chain[1])
+                elif op_chain[0] == 5:
+                    item = item ^ int(op_chain[1])
+                elif op_chain[0] == 6:
+                    item = ~item
+                elif op_chain[0] == 7:
+                    item = item >> int(op_chain[1])
+                elif op_chain[0] == 8:
+                    item = item << int(op_chain[1])
         else:
             for n in range(iterations):
                 for i in range(0, num_ops * 2, 2):
@@ -91,6 +92,7 @@ def computation(item: int, num_ops: int, op_chain: Tuple, iterations: int) -> in
                     elif op_chain[i] == 8:
                         item = item << int(op_chain[i + 1])
         print("computation complete...")
+        print(f"item: {item}\tsize of: {sys.getsizeof(item)}")
         return item
     except IndexError:
         print("could not perform calculation on op chain with one operation")
@@ -165,8 +167,9 @@ def submit_work_answer() -> int:
 
     header = p_protocols.Packet_Protocol(VERSION, SUBMIT_WORK)
     hdr = header.create_protocol_header(VERSION, SUBMIT_WORK)
-    answer = answer.to_bytes(4, 'little')
+    answer = struct.pack('!i', answer)
     packet = hdr + answer
+    print(f"packet with answer: {packet}\t len of pack: {len(packet)}")
     try:
         bytes_sent = conn_fd.send(packet)
         if bytes_sent <= 0:

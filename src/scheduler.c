@@ -187,32 +187,38 @@ uint32_t unpack_header (int client_conn)
         return ERR;
     }
 
-    ssize_t     bytes_recv  = 0;
-    uint32_t    version     = 0;
-    uint32_t    operation   = 0;
+    ssize_t    bytes_recv  = 0;
+    header_t * p_hdr       = calloc(1, sizeof(header_t));
 
-    bytes_recv = recv(client_conn, &version, sizeof(uint32_t), 0);
+    bytes_recv = recv(client_conn, p_hdr, sizeof(header_t), 0);
+    printf("client_conn: %d\n", client_conn);
     if (-1 == bytes_recv)
     {
         perror("version recv");
         return ERR;
     }
 
-    version = ntohl(version);
-    if (VERSION != version)
+    printf("version: %u\n", ntohl(p_hdr->version));
+    p_hdr->version = ntohl(p_hdr->version);
+    if (VERSION == p_hdr->version)
     {
-        return ERR;
+        p_hdr->operation = ntohl(p_hdr->operation);
+        printf("operation: %u\n", p_hdr->operation);
+        uint32_t operation;
+        memcpy(&operation, &p_hdr->operation, sizeof(uint32_t));
+        CLEAN(p_hdr);
+        printf("%s operation: %u\n", __func__, operation);
+        return operation;
     }
 
-    bytes_recv = recv(client_conn, &operation, sizeof(uint32_t), 0);
-    if (-1 == bytes_recv)
+    if (0 == p_hdr->version)
     {
-        perror("operation recv");
-        return ERR;
+        printf("waiting ...\n");
+        printf("%s operation when hdr is 0: %u\n", __func__, p_hdr->operation);
     }
 
-    operation = ntohl(operation);
-    return operation;
+    CLEAN(p_hdr);
+    return ERR;
 }
 
 /**
@@ -234,13 +240,16 @@ static uint32_t recv_num_operations (int client_conn)
     uint32_t num_operations = 0;
     ssize_t  bytes_recv     = 0;
 
+    printf("%s: client_conn -> %d\n", __func__, client_conn);
+
     bytes_recv = recv(client_conn, &num_operations, sizeof(uint32_t), 0);
-    if (0 > bytes_recv)
+    if (-1 == bytes_recv)
     {
         perror("num_operations recv");
         return 0;
     }
     num_operations = ntohl(num_operations);
+    printf("%s return value: %u\n", __func__, num_operations);
     return num_operations;
 }
 
@@ -333,10 +342,10 @@ static uint32_t recv_iterations (int client_conn)
     }
 
     num_iters = ntohl(num_iters);
-    if (ITERATIONS != num_iters)
+    if (num_iters < 1)
     {
-        perror("iterations to perform may only be 1");
-        return 0;
+        perror("default iterations is 1");
+        return 1;
     }
 
     return num_iters;
@@ -602,9 +611,12 @@ void send_task_to_worker (int worker_fd)
     ssize_t       bytes_sent    = -1;
 
     char work_buffer[MAX_BUFF] = { 0 };
+
     memcpy(work_buffer, &p_work->item, sizeof(uint32_t));
+
     memcpy((work_buffer + sizeof(uint32_t)),
             &num_ops, sizeof(uint32_t));
+
     for (size_t idx = 0; idx < p_job->num_operations; idx++)
     {
         memcpy((work_buffer + offset), 
@@ -615,11 +627,14 @@ void send_task_to_worker (int worker_fd)
                 &p_work->p_chain[idx].operand, sizeof(uint32_t));
         offset += sizeof(uint32_t);
     }
-
     memcpy((work_buffer + offset), &p_work->iterations, sizeof(uint32_t));
     uint32_t pack_sz = ((sizeof(uint32_t)) + (sizeof(uint32_t)) +
                         ((num_ops * sizeof(uint32_t)) * num_ops) + 
                         sizeof(uint32_t));
+    if (1 == p_job->num_operations)
+    {
+        pack_sz += sizeof(uint32_t);
+    }
     bytes_sent = send(worker_fd, work_buffer, pack_sz, 0);
     if (0 >= bytes_sent)
     {
@@ -638,28 +653,24 @@ void recv_computation (int worker_conn)
     }
 
     ssize_t bytes_recv = -1;
-    int32_t answer = -1;
+    int answer = -1;
 
-    bytes_recv = recv(worker_conn, &answer, sizeof(int32_t), 0);
-    if (0 >= bytes_recv)
+    bytes_recv = recv(worker_conn, &answer, sizeof(int), 0);
+    printf("bytes_recv: %ld\n", bytes_recv);
+    if (-1 == bytes_recv)
     {
         return;
     }
+    answer = ntohl(answer);
     recv_answer(worker_conn, answer);
 }
 
-static ssize_t determine_operation (int client_sock)
+static ssize_t determine_operation (int client_sock, uint32_t operation)
 {
     if (-1 == client_sock)
     {
         errno = EINVAL;
         perror("determine operation - file descriptor passed is invalid");
-        return -1;
-    }
-
-    uint32_t operation = unpack_header(client_sock);
-    if (ERR == operation)
-    {
         return -1;
     }
 
@@ -669,6 +680,8 @@ static ssize_t determine_operation (int client_sock)
     ssize_t            bytes_sent        = -1;
     uint32_t           job_id;
     int                shutdown          = SHUTDOWN;
+
+    printf("client_sock: %d\n", client_sock);
 
     switch (operation)
     {
@@ -702,6 +715,7 @@ static ssize_t determine_operation (int client_sock)
             {
                 fprintf(stderr, "could not send job_id\n");
             }
+            // close(client_sock);
             CLEAN(submitter_payload->items);
             CLEAN(submitter_payload->op_groups);
             CLEAN(submitter_payload);
@@ -745,18 +759,25 @@ void * worker_func (void * worker_conn)
         perror("worker file descriptor passed is invalid");
         return NULL;
     }
+
+    uint32_t operation = unpack_header(worker_sock);
+    if (ERR == operation)
+    {
+        printf("waiting ...\n");
+    }
     
     ssize_t det_op_ret = -1;
 
     while (g_running)
     {
-        det_op_ret = determine_operation(worker_sock);
+        det_op_ret = determine_operation(worker_sock, operation);
+        printf("det op ret: %ld\n", det_op_ret);
         if (-1 == det_op_ret)
         {
             break;
         }
     }
-    
+
     close(worker_sock);
     return NULL;
 }
