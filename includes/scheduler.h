@@ -41,6 +41,14 @@
 // clean up macro
 #define CLEAN(a) if(a)free(a);(a)=NULL
 
+typedef struct thread_info
+{
+    pthread_t       t_id;
+    pthread_attr_t  attr;
+    int             sock;
+    uint32_t        operation;
+} thread_info_t;
+
 /**
  * @brief - a SIGINT handler to catch ctrl+c keyboard interrupt.
  *          should trigger graceful safe teardown
@@ -93,7 +101,7 @@ void handle_worker_connections (int scheduler_fd, struct addrinfo * hints,
  * @return - a pointer to the header struct containing valid info or NULL
  *           on error
  */
-uint32_t unpack_header (int client_conn);
+uint32_t unpack_header (thread_info_t * p_info);
 
 /**
  * @brief - calls all receipt helper functions in order to appropriately retrieve

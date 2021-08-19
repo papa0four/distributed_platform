@@ -66,7 +66,7 @@ int initialize_global_data ()
         return -1;
     }
 
-    num_clients = -1;
+    num_clients = 0;
 
     memset(worker_threads, 0, MAX_CLIENTS * sizeof(pthread_t));
 
@@ -169,7 +169,7 @@ bool jobs_done (job_t * p_job)
         // retrieve and print the item and answer for the work
         for (size_t idx = 0; idx < p_job->num_items; idx++)
         {
-            item = p_job->p_work[idx].item;
+            item = ntohl(p_job->p_work[idx].item);
             answer = p_job->p_work[idx].answer;
             printf("\tItem: %u --> Answer: %d\n", item, answer);
         }

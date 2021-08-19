@@ -178,9 +178,9 @@ void * handle_broadcast (void * p_port)
     return NULL;
 }
 
-uint32_t unpack_header (int client_conn)
+uint32_t unpack_header (thread_info_t * p_info)
 {
-    if (-1 == client_conn)
+    if (-1 == p_info->sock)
     {
         errno = EBADF;
         perror("unpack_header - invalid file descriptor passed");
@@ -188,37 +188,20 @@ uint32_t unpack_header (int client_conn)
     }
 
     ssize_t    bytes_recv  = 0;
-    header_t * p_hdr       = calloc(1, sizeof(header_t));
+    header_t   p_hdr;
 
-    bytes_recv = recv(client_conn, p_hdr, sizeof(header_t), 0);
-    printf("client_conn: %d\n", client_conn);
+    bytes_recv = recv(p_info->sock, &p_hdr, sizeof(header_t), 0);
     if (-1 == bytes_recv)
     {
         perror("version recv");
         return ERR;
     }
 
-    printf("version: %u\n", ntohl(p_hdr->version));
-    p_hdr->version = ntohl(p_hdr->version);
-    if (VERSION == p_hdr->version)
-    {
-        p_hdr->operation = ntohl(p_hdr->operation);
-        printf("operation: %u\n", p_hdr->operation);
-        uint32_t operation;
-        memcpy(&operation, &p_hdr->operation, sizeof(uint32_t));
-        CLEAN(p_hdr);
-        printf("%s operation: %u\n", __func__, operation);
-        return operation;
-    }
+    p_hdr.version = ntohl(p_hdr.version);
+    p_hdr.operation = ntohl(p_hdr.operation);
+    p_info->operation = p_hdr.operation;
 
-    if (0 == p_hdr->version)
-    {
-        printf("waiting ...\n");
-        printf("%s operation when hdr is 0: %u\n", __func__, p_hdr->operation);
-    }
-
-    CLEAN(p_hdr);
-    return ERR;
+    return p_hdr.operation;
 }
 
 /**
@@ -240,7 +223,6 @@ static uint32_t recv_num_operations (int client_conn)
     uint32_t num_operations = 0;
     ssize_t  bytes_recv     = 0;
 
-    printf("%s: client_conn -> %d\n", __func__, client_conn);
 
     bytes_recv = recv(client_conn, &num_operations, sizeof(uint32_t), 0);
     if (-1 == bytes_recv)
@@ -249,7 +231,6 @@ static uint32_t recv_num_operations (int client_conn)
         return 0;
     }
     num_operations = ntohl(num_operations);
-    printf("%s return value: %u\n", __func__, num_operations);
     return num_operations;
 }
 
@@ -607,35 +588,38 @@ void send_task_to_worker (int worker_fd)
 
     const job_t * p_job         = find_job(p_work->job_id);
     uint32_t      num_ops       = p_job->num_operations;
-    uint32_t      offset        = (sizeof(uint32_t) * 2);
+    uint32_t      offset        = 0;
     ssize_t       bytes_sent    = -1;
 
     char work_buffer[MAX_BUFF] = { 0 };
 
-    memcpy(work_buffer, &p_work->item, sizeof(uint32_t));
+    p_work->item = htonl(p_work->item);
 
-    memcpy((work_buffer + sizeof(uint32_t)),
-            &num_ops, sizeof(uint32_t));
+    memcpy(work_buffer, &p_work->item, sizeof(uint32_t));
+    offset += sizeof(uint32_t);
+
+    num_ops = htonl(num_ops);
+    memcpy((work_buffer + offset), &num_ops, sizeof(uint32_t));
+    offset += sizeof(uint32_t);
 
     for (size_t idx = 0; idx < p_job->num_operations; idx++)
     {
+        p_work->p_chain[idx].operation = htonl(p_work->p_chain[idx].operation);
         memcpy((work_buffer + offset), 
                 &p_work->p_chain[idx].operation, sizeof(uint32_t));
         offset += sizeof(uint32_t);
 
+        p_work->p_chain[idx].operand = htonl(p_work->p_chain[idx].operand);
         memcpy((work_buffer + offset), 
                 &p_work->p_chain[idx].operand, sizeof(uint32_t));
         offset += sizeof(uint32_t);
     }
+
+    p_work->iterations = htonl(p_work->iterations);
     memcpy((work_buffer + offset), &p_work->iterations, sizeof(uint32_t));
-    uint32_t pack_sz = ((sizeof(uint32_t)) + (sizeof(uint32_t)) +
-                        ((num_ops * sizeof(uint32_t)) * num_ops) + 
-                        sizeof(uint32_t));
-    if (1 == p_job->num_operations)
-    {
-        pack_sz += sizeof(uint32_t);
-    }
-    bytes_sent = send(worker_fd, work_buffer, pack_sz, 0);
+    offset += sizeof(uint32_t);
+
+    bytes_sent = send(worker_fd, work_buffer, offset, 0);
     if (0 >= bytes_sent)
     {
         fprintf(stderr, "could not send work packet to worker\n");
@@ -656,7 +640,6 @@ void recv_computation (int worker_conn)
     int answer = -1;
 
     bytes_recv = recv(worker_conn, &answer, sizeof(int), 0);
-    printf("bytes_recv: %ld\n", bytes_recv);
     if (-1 == bytes_recv)
     {
         return;
@@ -665,12 +648,23 @@ void recv_computation (int worker_conn)
     recv_answer(worker_conn, answer);
 }
 
-static ssize_t determine_operation (int client_sock, uint32_t operation)
+static ssize_t determine_operation (thread_info_t * p_info)
 {
-    if (-1 == client_sock)
+    if (NULL == p_info)
+    {
+        return -1;
+    }
+    if (-1 == p_info->sock)
     {
         errno = EINVAL;
         perror("determine operation - file descriptor passed is invalid");
+        return -1;
+    }
+
+    uint32_t operation = unpack_header(p_info);
+    if (ERR == operation)
+    {
+        fprintf(stderr, "%s header is NULL\n", __func__);
         return -1;
     }
 
@@ -681,12 +675,10 @@ static ssize_t determine_operation (int client_sock, uint32_t operation)
     uint32_t           job_id;
     int                shutdown          = SHUTDOWN;
 
-    printf("client_sock: %d\n", client_sock);
-
     switch (operation)
     {
         case SUBMIT_JOB:
-            submitter_payload = unpack_payload(client_sock);
+            submitter_payload = unpack_payload(p_info->sock);
             if (NULL == submitter_payload)
             {
                 fprintf(stderr, "could not recv submitter request\n");
@@ -709,36 +701,35 @@ static ssize_t determine_operation (int client_sock, uint32_t operation)
                 CLEAN(submitter_payload);
                 return -1;
             }
-            job_id = ntohl(p_new_job->job_id);
-            bytes_sent = send(client_sock, &job_id, sizeof(uint32_t), 0);
+            job_id = htonl(p_new_job->job_id);
+            bytes_sent = send(p_info->sock, &job_id, sizeof(uint32_t), 0);
             if (-1 == bytes_sent)
             {
                 fprintf(stderr, "could not send job_id\n");
             }
-            // close(client_sock);
             CLEAN(submitter_payload->items);
             CLEAN(submitter_payload->op_groups);
             CLEAN(submitter_payload);
             break;
 
         case QUERY_WORK:
-            send_task_to_worker(client_sock);
+            send_task_to_worker(p_info->sock);
             break;
 
         case SUBMIT_WORK:
-            recv_computation(client_sock);
+            recv_computation(p_info->sock);
             break;
 
         case SHUTDOWN:
             pthread_mutex_lock(&running_mutex);
-            bytes_sent = send(client_sock, &shutdown, sizeof(int), 0);
+            bytes_sent = send(p_info->sock, &shutdown, sizeof(int), 0);
             if (0 >= bytes_sent)
             {
                 fprintf(stderr, "could not send shutdown command to worker\n");
             }
             g_running = false;
             pthread_mutex_unlock(&running_mutex);
-            close(client_sock);
+            close(p_info->sock);
             break;
 
         default:
@@ -750,35 +741,42 @@ static ssize_t determine_operation (int client_sock, uint32_t operation)
     return 0;
 }
 
-void * worker_func (void * worker_conn)
+void * worker_func (void * p_info)
 {
-    int worker_sock = *(int *) worker_conn;
-    if (-1 == worker_sock)
+    if (NULL == p_info)
+    {
+        return NULL;
+    }
+    thread_info_t ** p_thread_info = (thread_info_t **) &p_info;
+    if (NULL == p_thread_info)
+    {
+        CLEAN(p_info);
+        return NULL;
+    }
+    if (-1 == (*p_thread_info)->sock)
     {
         errno = EBADF;
         perror("worker file descriptor passed is invalid");
         return NULL;
     }
 
-    uint32_t operation = unpack_header(worker_sock);
-    if (ERR == operation)
-    {
-        printf("waiting ...\n");
-    }
-    
     ssize_t det_op_ret = -1;
 
     while (g_running)
     {
-        det_op_ret = determine_operation(worker_sock, operation);
-        printf("det op ret: %ld\n", det_op_ret);
+        det_op_ret = determine_operation(*p_thread_info);
+        if ((0 == (*p_thread_info)->operation) && (0 == det_op_ret))
+        {
+            pthread_cancel((*p_thread_info)->t_id);
+        }
+
         if (-1 == det_op_ret)
         {
             break;
         }
     }
 
-    close(worker_sock);
+    CLEAN(p_info);
     return NULL;
 }
 
@@ -786,48 +784,65 @@ void handle_worker_connections (int scheduler_fd, struct addrinfo * hints,
                                 socklen_t scheduler_len)
 
 {
-    int         new_connection              = 0;
-    int         idx                         = 0;
-    int         pthread_ret                 = -1;
+    int idx             = 0;
+    int pthread_ret     = -1;
+    thread_info_t ** p_threads = calloc(MAX_CLIENTS, sizeof(thread_info_t *));
 
     while (g_running)
     {
-        new_connection = accept(scheduler_fd, (struct sockaddr *)&hints->ai_addr, &scheduler_len);
-        if (-1 == new_connection)
+        p_threads[idx] = calloc(1, sizeof(thread_info_t));
+        if (NULL == p_threads[idx])
+        {
+            errno = ENOMEM;
+            fprintf(stderr, "%s() - could not allocate memory for thread information struct\n", __func__);
+            CLEAN(p_threads);
+            return;
+        }
+
+        pthread_attr_init(&p_threads[idx]->attr);
+        p_threads[idx]->sock = accept(scheduler_fd, (struct sockaddr *)&hints->ai_addr, &scheduler_len);
+        if (-1 == p_threads[idx]->sock)
         {
             g_running = false;
             close(scheduler_fd);
-            return;
+            CLEAN(p_threads[idx]);
+            break;
         }
 
         num_clients++;
         
-        if (g_running)
+        pthread_attr_setdetachstate(&p_threads[idx]->attr, PTHREAD_CREATE_DETACHED);
+        pthread_ret = pthread_create(&p_threads[idx]->t_id, &p_threads[idx]->attr,
+                    worker_func, (void *)p_threads[idx]);
+        if (0 != pthread_ret)
         {
-            pthread_ret = pthread_create(&worker_threads[idx], NULL,
-                        worker_func, &new_connection);
-            if (0 != pthread_ret)
-            {
-                fprintf(stderr, "could not create worker thread\n");
-                close(new_connection);
-            }
-
-            pthread_ret = pthread_detach(worker_threads[idx]);
-            if (0 != pthread_ret)
-            {
-                fprintf(stderr, "could not detach worker thread\n");
-                close(new_connection);
-            }
+            fprintf(stderr, "could not create worker thread\n");
+            close(p_threads[idx]->sock);
+            CLEAN(p_threads[idx]);
+            break;
         }
-        
+
+        worker_threads[idx] = p_threads[idx]->t_id;
+
         if (MAX_CLIENTS == (num_clients + 1))
         {
             printf("max clients connected ... ");
             break;
         }
-
         idx++;
     }
+
+    for (size_t i = 0; i < MAX_CLIENTS; i++)
+    {
+        if (p_threads[i])
+        {
+            pthread_cancel(p_threads[i]->t_id);
+            CLEAN(p_threads[i]);
+            sleep(1);
+        }
+    }
+    CLEAN(p_threads);
+    return;
 }
 
 int main (int argc, char ** argv)
@@ -888,18 +903,19 @@ int main (int argc, char ** argv)
 
     handle_worker_connections(scheduler_fd, &scheduler, scheduler.ai_addrlen);
 
-    int working_thread_cnt = sizeof(worker_threads)/sizeof(worker_threads[0]);
     if (false == g_running)
     {
         pthread_cancel(broadcast_thread);
-        for (int i = 0; i < working_thread_cnt; i++)
-        {
-            if (worker_threads[i])
-            {
-                pthread_cancel(worker_threads[i]);
-                sleep(1);
-            }
-        }
+        // for (int i = 0; i < MAX_CLIENTS; i++)
+        // {
+        //     // if (worker_threads[i])
+        //     // {
+        //     //     pthread_cancel(worker_threads[i]);
+        //     //     sleep(1);
+        //     // }
+        //     pthread_cancel(worker_threads[i]);
+        //     usleep(500);
+        // }
     }
 
     close(scheduler_fd);

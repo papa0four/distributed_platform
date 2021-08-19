@@ -30,7 +30,7 @@ def test_num_sz(num: int) -> bool:
         return True
     else:
         print(f" {num} is out of range 0 - 2^32, please enter a smaller number")
-        return False
+        exit()
 
 def create_op_range(input_range: str) -> list:
     """
@@ -167,7 +167,7 @@ def create_payload(num_ops: int, op_chain: list, iter: int,
 
     return payload
 
-def handle_submitter() -> None:
+def handle_submitter(conn_fd: int) -> None:
     """
     @brief - main submitter driver to receive the submitter application's 
              command line arguments, call all helper functions to appropriately
@@ -178,61 +178,67 @@ def handle_submitter() -> None:
     """
     protocol_version = 1
     submit_job = 0
-    with cts.connect_to_scheduler() as conn_fd:
-        for i in range(1, len(sys.argv)):
-            if sys.argv[i][0] == '-' and sys.argv[i][1].isdigit():
-                sys.argv[i] = f" {sys.argv[i]}"
-        parser = argparse.ArgumentParser(description='enter operation chain to be processed.')
-        parser = argparse.ArgumentParser(add_help=False)
-        parser.add_argument('-n', dest="options", nargs='+', type=str)
-        parser.add_argument('-s', dest="shutdown", action='store_true')
-        parser.add_argument('-h', '--help', dest="help", action='store_true')
-        args = parser.parse_args()
-        
-        if args.shutdown == True:
-            shutdown = 5
-            header = p_protocols.Packet_Protocol(protocol_version, shutdown)
-            hdr = header.create_protocol_header(protocol_version, shutdown)
-            try:
-                bytes_sent = conn_fd.send(hdr)
-                if (bytes_sent <= 0):
-                    print("could not send shutdown flag")
-            except IOError as senderr:
-                print(f"could not establish send connection to scheduler: {senderr}")
-                exit()
-            print(f"sending shutdown flag...")
-            exit()
-        elif args.help == True:
-            hm.usage_msg()
-            exit()
-
-        operation_list = args.options[0].split(' ')
-        operation_chain = args.options[1].split(' ')
-        iterations = args.options[2]
-        if args.options == None or len(args.options) != 3:
-            hm.usage_msg()
-            exit()
-
-        op_list = valid_operand_check(operation_list[0])
-        if len(operation_chain) > 1:
-            op_chain = valid_opchain_check(operation_chain[1])
-        else:
-            op_chain = valid_opchain_check(operation_chain[0])
-        header = p_protocols.Packet_Protocol(protocol_version, submit_job)
-        hdr = header.create_protocol_header(protocol_version, submit_job)
-        payload = create_payload(len(op_chain), op_chain, iterations, 
-                    len(op_list), op_list)
-        packet = hdr + payload
+    job_id_len = 4
+    
+    for i in range(1, len(sys.argv)):
+        if sys.argv[i][0] == '-' and sys.argv[i][1].isdigit():
+            sys.argv[i] = f" {sys.argv[i]}"
+    parser = argparse.ArgumentParser(description='enter operation chain to be processed.')
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument('-n', dest="options", nargs='+', type=str)
+    parser.add_argument('-s', dest="shutdown", action='store_true')
+    parser.add_argument('-h', '--help', dest="help", action='store_true')
+    args = parser.parse_args()
+    
+    if args.shutdown == True:
+        shutdown = 5
+        header = p_protocols.Packet_Protocol(protocol_version, shutdown)
+        hdr = header.create_protocol_header(protocol_version, shutdown)
         try:
-            bytes_sent = conn_fd.send(packet)
-            if bytes_sent <= 0:
-                print("no bytes sent to scheduler")
-            print(f"job submitted {len(packet)} bytes sent ...")
-            bytes_recv = conn_fd.recv(1024)
-            job_id = int.from_bytes(bytes_recv, "big", signed=False)
-            print(f"Job ID recv'd: {job_id}")
-        except AttributeError:
+            bytes_sent = conn_fd.send(hdr)
+            if (bytes_sent <= 0):
+                print("could not send shutdown flag")
+                exit()
+        except IOError as senderr:
+            print(f"could not establish send connection to scheduler: {senderr}")
             exit()
+        print(f"sending shutdown flag...")
+        exit()
+    elif args.help == True:
+        hm.usage_msg()
+        exit()
+
+    operation_list = args.options[0].split(' ')
+    operation_chain = args.options[1].split(' ')
+    iterations = args.options[2]
+    if args.options == None or len(args.options) != 3:
+        hm.usage_msg()
+        exit()
+
+    op_list = valid_operand_check(operation_list[0])
+    if len(operation_chain) > 1:
+        op_chain = valid_opchain_check(operation_chain[1])
+    else:
+        op_chain = valid_opchain_check(operation_chain[0])
+    header = p_protocols.Packet_Protocol(protocol_version, submit_job)
+    hdr = header.create_protocol_header(protocol_version, submit_job)
+    payload = create_payload(len(op_chain), op_chain, iterations, 
+                len(op_list), op_list)
+    packet = hdr + payload
+    packet_len = len(packet)
+    try:
+        bytes_sent = conn_fd.send(packet)
+        if bytes_sent <= 0:
+            print("no bytes sent to scheduler")
+            exit()
+        print(f"job submitted {len(packet)} bytes sent ...")
+        bytes_recv = conn_fd.recv(job_id_len)
+        job_id = int.from_bytes(bytes_recv, "big", signed=False)
+        print(f"Job ID recv'd: {job_id}")
+    except AttributeError:
+        exit()
 
 if __name__ == "__main__":
-    handle_submitter()
+    conn_fd = cts.connect_to_scheduler()
+    handle_submitter(conn_fd)
+    conn_fd.close()

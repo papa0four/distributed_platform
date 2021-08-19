@@ -25,7 +25,7 @@ def unpack_work(work: bytes) -> Dict:
               work's answer based upon the operations and operands
     """
 
-    task = struct.unpack('<' + ('I' * (len(work)//4)), work)
+    task = struct.unpack('>' + ('I' * (len(work)//4)), work)
     item = task[0]
     num_ops = task[1]
     op_chain = task[2:-1]
@@ -48,10 +48,9 @@ def computation(item: int, num_ops: int, op_chain: Tuple, iterations: int) -> in
     @var 4 iterations - the number of times to perform these operations (always 1)
     return - returns the computed answer based upon the operands and operations
     """
-    
     try:
         if num_ops == 1:
-            for n in range(iterations):
+            for _ in range(iterations):
                 if op_chain[0] == 0:
                     item = item + int(op_chain[1])
                 elif op_chain[0] == 1:
@@ -71,7 +70,7 @@ def computation(item: int, num_ops: int, op_chain: Tuple, iterations: int) -> in
                 elif op_chain[0] == 8:
                     item = item << int(op_chain[1])
         else:
-            for n in range(iterations):
+            for _ in range(iterations):
                 for i in range(0, num_ops * 2, 2):
                     if op_chain[i] == 0:
                         item = item + int(op_chain[i + 1])
@@ -92,14 +91,13 @@ def computation(item: int, num_ops: int, op_chain: Tuple, iterations: int) -> in
                     elif op_chain[i] == 8:
                         item = item << int(op_chain[i + 1])
         print("computation complete...")
-        print(f"item: {item}\tsize of: {sys.getsizeof(item)}")
         return item
     except IndexError:
-        print("could not perform calculation on op chain with one operation")
+        print("could not perform calculation on op chain")
         print("shutting down...")
         exit()
 
-def handle_work() -> Tuple:
+def handle_work(conn_fd: int) -> Tuple:
     """
     @brief - sends the query work packet and waits for the response containing
              the expected work to be performed. Then calls the computation helper
@@ -109,19 +107,14 @@ def handle_work() -> Tuple:
     @return - a tuple containing the answer and the socket file descriptor of the
               scheduler
     """
-    
+    task_size = 20
     VERSION = 1
     QUERY_WORK = 3
     item = 0
     num_ops = 0
     op_chain: Tuple = ()
     iterations = 0
-    try:
-        conn_fd = cts.connect_to_scheduler()
-        if conn_fd == None:
-            exit()
-    except IOError:
-        exit()
+    
     header = p_protocols.Packet_Protocol(VERSION, QUERY_WORK)
     hdr = header.create_protocol_header(VERSION, QUERY_WORK)
     try:
@@ -136,6 +129,7 @@ def handle_work() -> Tuple:
         if work == b'':
             print("scheduler shut down, termination flag received")
             exit()
+
         task_list = unpack_work(work)
         for key, val in task_list.items():
             if key == "Op Chain":
@@ -146,14 +140,13 @@ def handle_work() -> Tuple:
                 num_ops = val
             elif key == "Iters":
                 iterations = val
-        
         answer = computation(item, num_ops, op_chain, iterations)
         return (conn_fd, answer)
     except IOError as recv_err:
         print(f"could not receive work: {recv_err}")
         exit()
 
-def submit_work_answer() -> int:
+def submit_work_answer(conn_fd: int) -> int:
     """
     @brief - receives the answer to the requested work from the handle_work
              function and sends the answer back to the scheduler
@@ -161,7 +154,7 @@ def submit_work_answer() -> int:
     @return - the socket file descriptor for the scheduler
     """
     
-    conn_fd, answer = handle_work()
+    conn_fd, answer = handle_work(conn_fd)
     VERSION = 1
     SUBMIT_WORK = 4
 
@@ -169,7 +162,6 @@ def submit_work_answer() -> int:
     hdr = header.create_protocol_header(VERSION, SUBMIT_WORK)
     answer = struct.pack('!i', answer)
     packet = hdr + answer
-    print(f"packet with answer: {packet}\t len of pack: {len(packet)}")
     try:
         bytes_sent = conn_fd.send(packet)
         if bytes_sent <= 0:
@@ -191,9 +183,17 @@ def main():
     
     running = True
     sleep = 1
+
+    try:
+        conn_fd = cts.connect_to_scheduler()
+        if conn_fd == None:
+            exit()
+    except IOError:
+        exit()
+
     while(running):
         try:
-            conn_fd = submit_work_answer()
+            conn_fd = submit_work_answer(conn_fd)
             if -1 == conn_fd:
                 running = False
             time.sleep(sleep)

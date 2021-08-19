@@ -79,6 +79,7 @@ work_t * dequeue_work ()
         if (false == g_running)
         {
             pthread_mutex_unlock(&wqueue_mutex);
+            pthread_cond_broadcast(&condition);
             CLEAN(p_wqueue);
             return NULL;
         }
@@ -166,8 +167,6 @@ bool wqueue_destroy ()
 {
     if ((NULL == p_wqueue) || (NULL == p_wqueue->p_work))
     {
-        // errno = EINVAL;
-        // perror("pointer to container passed is empty");
         return false;
     }
 
