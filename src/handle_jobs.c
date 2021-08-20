@@ -1,4 +1,5 @@
 #include "../includes/scheduler.h"
+#include "../includes/operations.h"
 
 job_t * create_job (subjob_payload_t * p_job_payload)
 {

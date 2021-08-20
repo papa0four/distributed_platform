@@ -68,6 +68,15 @@ def valid_operand_check(operands: str) -> list:
         if re.fullmatch(valid_input, operands) is None:
             print(f"{operands} is not a valid value")
             return []
+        elif '-' in operands:
+            valid_range_check = '([0-9]+)(-?)([0-9]+)'
+            if re.fullmatch(valid_input_range, operands) is not None:
+                num_range = re.split(valid_range_check, operands)
+                num_range = create_op_range(num_range)
+                for num in num_range:
+                    operand_list.append(num)
+                return operand_list
+
         else:
             operand_list.append(operands)
             return operand_list
@@ -225,7 +234,6 @@ def handle_submitter(conn_fd: int) -> None:
     payload = create_payload(len(op_chain), op_chain, iterations, 
                 len(op_list), op_list)
     packet = hdr + payload
-    packet_len = len(packet)
     try:
         bytes_sent = conn_fd.send(packet)
         if bytes_sent <= 0:

@@ -1,4 +1,4 @@
-#include "../includes/scheduler.h"
+#include "../includes/global_data.h"
 
 job_t           ** pp_jobs;
 work_queue_t     * p_wqueue;

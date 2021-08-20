@@ -73,15 +73,14 @@ work_t * dequeue_work ()
     }
 
     pthread_mutex_lock(&wqueue_mutex);
-    while ((g_running) && is_empty(p_wqueue))
+    while ((g_running) && (1 == is_empty(p_wqueue)))
     {
         pthread_cond_wait(&condition, &wqueue_mutex);
         if (false == g_running)
         {
             pthread_mutex_unlock(&wqueue_mutex);
             pthread_cond_broadcast(&condition);
-            CLEAN(p_wqueue);
-            return NULL;
+            goto CLEANUP;
         }
     }
 
@@ -92,6 +91,10 @@ work_t * dequeue_work ()
     pthread_cond_broadcast(&condition);
 
     return p_work;
+
+CLEANUP:
+    wqueue_destroy(p_wqueue);
+    return NULL;
 }
 
 int is_full ()

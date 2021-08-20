@@ -3,7 +3,8 @@
 
 #include <stdbool.h>
 #include <pthread.h>
-#include "scheduler.h"
+#include <arpa/inet.h>
+#include "work_queue.h"
 
 #define MAX_CLIENTS 100
 

@@ -1,4 +1,4 @@
-CFLAGS 	= -Wall -Wextra -Werror -Wpedantic -g
+CFLAGS 	= -Wall -Wextra -Werror -Wpedantic -g -std=c11
 LDLIBS 	= -lpthread
 
 # Automatic project management

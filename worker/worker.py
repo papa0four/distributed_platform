@@ -24,7 +24,6 @@ def unpack_work(work: bytes) -> Dict:
     @return - a dictionary containing all necessary information to computer the
               work's answer based upon the operations and operands
     """
-
     task = struct.unpack('>' + ('I' * (len(work)//4)), work)
     item = task[0]
     num_ops = task[1]
@@ -70,7 +69,8 @@ def computation(item: int, num_ops: int, op_chain: Tuple, iterations: int) -> in
                 elif op_chain[0] == 8:
                     item = item << int(op_chain[1])
         else:
-            for _ in range(iterations):
+            iter = 0
+            while iter < iterations:
                 for i in range(0, num_ops * 2, 2):
                     if op_chain[i] == 0:
                         item = item + int(op_chain[i + 1])
@@ -90,6 +90,8 @@ def computation(item: int, num_ops: int, op_chain: Tuple, iterations: int) -> in
                         item = item >> int(op_chain[i + 1])
                     elif op_chain[i] == 8:
                         item = item << int(op_chain[i + 1])
+                iter += 1
+        
         print("computation complete...")
         return item
     except IndexError:
@@ -107,7 +109,6 @@ def handle_work(conn_fd: int) -> Tuple:
     @return - a tuple containing the answer and the socket file descriptor of the
               scheduler
     """
-    task_size = 20
     VERSION = 1
     QUERY_WORK = 3
     item = 0

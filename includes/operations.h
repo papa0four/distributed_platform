@@ -1,12 +1,14 @@
 #ifndef __PROTOCOL_H__
 #define __PROTOCOL_H__
 
-#include "scheduler.h"
+#include <inttypes.h>
+#include <pthread.h>
 
 // define pre-processor constants
 #define VERSION         1
 #define ITERATIONS      1
 #define MAX_JOBS        50
+#define MAX_CLIENTS     100
 
 // define operations
 #define SUBMIT_JOB      0
@@ -26,6 +28,16 @@
 #define ROLR    7
 #define ROLL    8
 
+// clean up macro
+#define CLEAN(a) if(a)free(a);(a)=NULL
+
+typedef struct thread_info
+{
+    pthread_t       t_id;
+    int             sock;
+    uint32_t        operation;
+} thread_info_t;
+
 /**
  * @brief - contains the opchain group data
  * @member operation - an unsigned 32 bit integer determining the mathematical
@@ -38,12 +50,6 @@ typedef struct _opchain_t
     uint32_t operation;
     uint32_t operand;
 } opchain_t;
-
-typedef struct header
-{
-    uint32_t version;
-    uint32_t operation;
-} header_t;
 
 /**
  * @brief - an item structure containing the individual item to perform the op_chain
@@ -62,11 +68,11 @@ typedef struct _item_t
  * @member operation - an unsigned 32 bit integer containing the operation of
  *                     the packet
  */
-// typedef struct _header_t
-// {
-//     uint32_t    version;
-//     uint32_t    operation;
-// } header_t;
+typedef struct header_t
+{
+    uint32_t    version;
+    uint32_t    operation;
+} header_t;
 
 /**
  * @brief - a structure containing all the appropriate data received from the
@@ -85,7 +91,7 @@ typedef struct _submit_job_payload_t
 {
     uint32_t    num_operations;
     opchain_t * op_groups;
-    uint32_t    num_iters;  // always 1
+    uint32_t    num_iters;
     uint32_t    num_items;
     item_t    * items;
 } subjob_payload_t;
