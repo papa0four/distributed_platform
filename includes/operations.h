@@ -9,6 +9,7 @@
 #define ITERATIONS      1
 #define MAX_JOBS        50
 #define MAX_CLIENTS     100
+#define MAX_ID          65535
 
 // define operations
 #define SUBMIT_JOB      0
@@ -30,6 +31,8 @@
 
 // clean up macro
 #define CLEAN(a) if(a)free(a);(a)=NULL
+#define true 1
+#define false 0
 
 typedef struct thread_info
 {

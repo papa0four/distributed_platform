@@ -1,7 +1,6 @@
 #ifndef __GLOBAL_DATA_H__
 #define __GLOBAL_DATA_H__
 
-#include <stdbool.h>
 #include <pthread.h>
 #include <arpa/inet.h>
 #include "work_queue.h"
@@ -25,7 +24,7 @@ extern volatile size_t jobs_list_len;
 
 extern work_queue_t * p_wqueue;
 
-extern volatile bool g_running;
+extern volatile sig_atomic_t g_running;
 
 extern pthread_mutex_t running_mutex;
 
@@ -87,7 +86,7 @@ void recv_answer (int worker_conn, int32_t answer);
  * @param p_job - a pointer to the specific job
  * @return - true if successfil, false if not found or on error
  */
-bool jobs_done (job_t * p_job);
+int jobs_done (job_t * p_job);
 
 /**
  * @brief - responsible for placing a job's work within the queue to hand off

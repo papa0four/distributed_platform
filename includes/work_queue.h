@@ -41,7 +41,7 @@ work_queue_t * wqueue_init ();
  * @param p_work - a pointer to the work structure containing all instructions
  * @return - true upon successful addition of work, false on errors
  */
-bool enqueue_work (work_t * p_work);
+int enqueue_work (work_t * p_work);
 
 /**
  * @brief - pop's a work instruction off the top of the queue,
@@ -90,6 +90,6 @@ work_queue_t * resize_wqueue ();
  * @param p_tqueue - a pointer to the overarching queue structure
  * @return - true upon proper tear down of the queue, false on error
  */
-bool wqueue_destroy ();
+int wqueue_destroy ();
 
 #endif

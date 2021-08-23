@@ -20,7 +20,7 @@ typedef struct _work_t
     uint32_t    item;
     int32_t     answer;
     int         worker_sock;
-    bool        b_work_done;
+    int         b_work_done;
     opchain_t * p_chain;
 } work_t;
 
@@ -37,7 +37,7 @@ typedef struct _job_t
 {
     uint32_t    job_id;
     work_t    * p_work;
-    bool        b_job_done;
+    int         b_job_done;
     uint32_t    num_items;
     uint32_t    num_operations;
 } job_t;

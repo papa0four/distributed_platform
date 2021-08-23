@@ -6,7 +6,7 @@ void send_task_to_worker (int worker_fd)
     work_t * p_work = dequeue_work();
     if (NULL == p_work)
     {
-        if (false == g_running)
+        if (0 == g_running)
         {
             return;
         }

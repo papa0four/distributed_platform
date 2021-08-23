@@ -16,14 +16,17 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include "operations.h"
 #include "global_data.h"
 
 // predefined macros to avoid magic number usage
+#define UDP_CONN        0
+#define TCP_CONN        1
 #define SIGINT          2
 #define PORT_LEN        6
-#define BACKLOG         10
+#define BACKLOG         100
 #define MAX_BUFF        1024
 #define BROADCAST       31337
 #define BROADCAST_PORT  "31337"
@@ -58,7 +61,7 @@ struct addrinfo setup_scheduler (struct addrinfo * hints, int socket_type);
  * @return - the broadcast file descriptor listening for submitters and workers
  *           or -1 on error
  */
-int create_socket (struct addrinfo * hints, char * str_port, int sockopt_flag);
+int create_socket (struct addrinfo * hints, char * str_port, int sockopt_flag, int type_flag);
 
 /**
  * @brief - handle to infinite broadcast send/receive between the

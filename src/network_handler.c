@@ -69,7 +69,7 @@ struct addrinfo setup_scheduler (struct addrinfo * hints, int socket_type)
     return *hints;
 }
 
-int create_socket (struct addrinfo * hints, char * str_port, int sockopt_flag)
+int create_socket (struct addrinfo * hints, char * str_port, int sockopt_flag, int type_flag)
 {
     int sock_fd     = 0;
     int reuse       = 1;
@@ -77,6 +77,9 @@ int create_socket (struct addrinfo * hints, char * str_port, int sockopt_flag)
 
     struct addrinfo * serv_info;
     struct addrinfo * p_addr;
+    struct timeval timeout;
+    timeout.tv_sec = 10;
+    timeout.tv_usec = 0;
 
     if ((ret_val = getaddrinfo(NULL, str_port, hints, &serv_info)) != 0)
     {
@@ -86,18 +89,43 @@ int create_socket (struct addrinfo * hints, char * str_port, int sockopt_flag)
 
     for (p_addr = serv_info; p_addr != NULL; p_addr = p_addr->ai_next)
     {
-        if ((sock_fd = socket(p_addr->ai_family, p_addr->ai_socktype, p_addr->ai_protocol)) == -1)
+        // if ((sock_fd = socket(p_addr->ai_family, p_addr->ai_socktype, p_addr->ai_protocol)) == -1)
+        // {
+        //     perror("server: socket");
+        //     continue;
+        // }
+
+        if (UDP_CONN == type_flag)
         {
-            perror("server: socket");
-            continue;
+            if ((sock_fd = socket(p_addr->ai_family, p_addr->ai_socktype, p_addr->ai_protocol)) == -1)
+            {
+                perror("server: socket");
+                continue;
+            }
+
+            if (-1 == setsockopt(sock_fd, SOL_SOCKET, sockopt_flag, &reuse, sizeof(reuse)))
+            {
+                perror("setsockopt()");
+                exit(1);
+            }
         }
 
-        if (-1 == setsockopt(sock_fd, SOL_SOCKET, sockopt_flag, &reuse, sizeof(reuse)))
+        if (TCP_CONN == type_flag)
         {
-            perror("setsockopt()");
-            exit(1);
+            if ((sock_fd = socket(p_addr->ai_family, p_addr->ai_socktype | SOCK_NONBLOCK, p_addr->ai_protocol)) == -1)
+            {
+                perror("server: socket");
+                continue;
+            }
+
+            if (-1 == setsockopt(sock_fd, SOL_SOCKET, sockopt_flag, &timeout, sizeof(timeout)))
+            {
+                perror("setsockopt()");
+                exit(1);
+            }
         }
 
+        
         if (-1 == bind(sock_fd, p_addr->ai_addr, p_addr->ai_addrlen))
         {
             close(sock_fd);
@@ -135,7 +163,7 @@ void * handle_broadcast (void * p_port)
 
     ssize_t     bytes_recv          = 0;
     ssize_t     bytes_sent          = 0;
-    int         broadcast_socket    = create_socket(&hints, BROADCAST_PORT, SO_REUSEADDR | SO_BROADCAST);
+    int         broadcast_socket    = create_socket(&hints, BROADCAST_PORT, SO_REUSEADDR | SO_BROADCAST, UDP_CONN);
     int         timeout             = 1000;
 
     pfds[0].fd      = broadcast_socket;
@@ -180,7 +208,7 @@ void * handle_broadcast (void * p_port)
         }
     }
     CLEAN(pfds);
-    close(broadcast_socket);
+    shutdown(broadcast_socket, SHUT_RDWR);
     return NULL;
 }
 
@@ -189,11 +217,11 @@ int handle_working_socket (struct addrinfo * hints, char * p_port)
     int         scheduler_fd    = 0;
     int         listen_ret      = -1;
 
-    hints->ai_socktype = SOCK_STREAM;
-    hints->ai_flags = AI_PASSIVE;
-    hints->ai_family = AF_UNSPEC;
+    hints->ai_socktype  = SOCK_STREAM;
+    hints->ai_flags     = AI_PASSIVE;
+    hints->ai_family    = AF_UNSPEC;
 
-    scheduler_fd = create_socket(hints, p_port, SO_REUSEADDR);
+    scheduler_fd = create_socket(hints, p_port, SO_REUSEADDR, TCP_CONN);
 
     listen_ret = listen(scheduler_fd, BACKLOG);
     if (-1 == listen_ret)
@@ -212,51 +240,106 @@ void handle_worker_connections (int scheduler_fd, struct addrinfo * hints,
 {
     int idx             = 0;
     int pthread_ret     = -1;
+    int timeout         = 10000;    // equates to 10 seconds
+    int fd_count        = 1;
+    int fd_size         = MAX_CLIENTS;
+
     thread_info_t ** p_threads = calloc(MAX_CLIENTS, sizeof(thread_info_t *));
+    if (NULL == p_threads)
+    {
+        errno = ENOMEM;
+        fprintf(stderr, "%s could not allocate memory for threads array\n", __func__);
+        return;
+    }
+
+    struct pollfd * pfds = calloc(fd_size, sizeof(*pfds));
+    if (NULL == pfds)
+    {
+        errno = ENOMEM;
+        fprintf(stderr, "%s could not allocate poll fd array\n", __func__);
+        CLEAN(p_threads);
+        return;
+    }
+
+    pfds[0].fd      = scheduler_fd;
+    pfds[0].events  = POLLIN;
+    int i;
 
     while (g_running)
     {
-        p_threads[idx] = calloc(1, sizeof(thread_info_t));
-        if (NULL == p_threads[idx])
+        int poll_count = poll(pfds, fd_count, timeout);
+        if (-1 == poll_count)
         {
-            errno = ENOMEM;
-            fprintf(stderr, "%s() - could not allocate memory for thread information struct\n", __func__);
+            CLEAN(pfds);
             CLEAN(p_threads);
+            shutdown(scheduler_fd, SHUT_RDWR);
             return;
         }
 
-        p_threads[idx]->sock = accept(scheduler_fd, (struct sockaddr *)&hints->ai_addr, &scheduler_len);
-        if (-1 == p_threads[idx]->sock)
+        for (i = 0; i < fd_count; i++)
         {
-            g_running = false;
-            close(scheduler_fd);
-            CLEAN(p_threads[idx]);
-            break;
-        }
+            if (pfds[i].revents & POLLIN)
+            {
+                if (pfds[i].fd == scheduler_fd)
+                {
+                    int new_conn = accept(scheduler_fd, (struct sockaddr *)&hints->ai_addr, &scheduler_len);
+                    if (-1 == new_conn)
+                    {
+                        g_running = false;
+                        shutdown(scheduler_fd, SHUT_RDWR);
+                        goto CLEANUP;
+                    }
+                    else
+                    {
+                        p_threads[idx] = calloc(1, sizeof(thread_info_t));
+                        if (NULL == p_threads[idx])
+                        {
+                            errno = ENOMEM;
+                            fprintf(stderr, "%s() - could not allocate memory for thread information struct\n", __func__);
+                            CLEAN(pfds);
+                            CLEAN(p_threads);
+                            close(scheduler_fd);
+                            return;
+                        }
 
-        num_clients++;
-        
-        pthread_ret = pthread_create(&p_threads[idx]->t_id, NULL,
-                    worker_func, (void *)p_threads[idx]);
-        if (0 != pthread_ret)
-        {
-            fprintf(stderr, "could not create worker thread\n");
-            close(p_threads[idx]->sock);
-            CLEAN(p_threads[idx]);
-            break;
-        }
+                        p_threads[idx]->sock = new_conn;
+                        num_clients++;
 
-        worker_threads[idx] = p_threads[idx]->t_id;
+                        pthread_ret = pthread_create(&p_threads[idx]->t_id, NULL,
+                            worker_func, (void *)p_threads[idx]);
+                        if (0 != pthread_ret)
+                        {
+                            fprintf(stderr, "could not create worker thread\n");
+                            close(p_threads[idx]->sock);
+                            CLEAN(p_threads[idx]);
+                            break;
+                        }
 
-        if (MAX_CLIENTS == (num_clients + 1))
-        {
-            printf("max clients connected ... ");
-            break;
+                        worker_threads[idx] = p_threads[idx]->t_id;
+
+                        if (MAX_CLIENTS == (num_clients + 1))
+                        {
+                            printf("max clients connected ... ");
+                            break;
+                        }
+
+                        idx++;
+                    }
+                }
+            }
+            else
+            {
+                printf("timeout occurred\n");
+                g_running = false;
+                goto CLEANUP;
+            }
         }
-        idx++;
     }
 
+CLEANUP:
+    printf("start cleanup\n");
     pthread_cond_broadcast(&condition);
+    shutdown(scheduler_fd, SHUT_RDWR);
     for (size_t i = 0; i < MAX_CLIENTS; i++)
     {
         if (p_threads[i])
@@ -266,6 +349,8 @@ void handle_worker_connections (int scheduler_fd, struct addrinfo * hints,
             sleep(1);
         }
     }
+
+    CLEAN(pfds);
     CLEAN(p_threads);
     return;
 }

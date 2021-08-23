@@ -64,6 +64,7 @@ ssize_t determine_operation (thread_info_t * p_info)
     {
         return -1;
     }
+
     if (-1 == p_info->sock)
     {
         errno = EINVAL;
@@ -83,7 +84,7 @@ ssize_t determine_operation (thread_info_t * p_info)
     ssize_t            populate_ret      = -1;
     ssize_t            bytes_sent        = -1;
     uint32_t           job_id;
-    int                shutdown          = SHUTDOWN;
+    int                close_fd          = SHUTDOWN;
 
     switch (operation)
     {
@@ -131,15 +132,16 @@ ssize_t determine_operation (thread_info_t * p_info)
             break;
 
         case SHUTDOWN:
-            pthread_mutex_lock(&running_mutex);
-            bytes_sent = send(p_info->sock, &shutdown, sizeof(int), 0);
+        printf("shutdown flag received from client, exiting application...\n");
+            bytes_sent = send(p_info->sock, &close_fd, sizeof(int), 0);
             if (0 >= bytes_sent)
             {
                 fprintf(stderr, "could not send shutdown command to worker\n");
             }
+            pthread_mutex_lock(&running_mutex);
+            shutdown(p_info->sock, SHUT_RDWR);
             g_running = false;
             pthread_mutex_unlock(&running_mutex);
-            close(p_info->sock);
             break;
 
         default:
@@ -157,16 +159,23 @@ void * worker_func (void * p_info)
     {
         return NULL;
     }
-    thread_info_t ** p_thread_info = (thread_info_t **) &p_info;
+    thread_info_t * p_thread_info = (thread_info_t *) p_info;
     if (NULL == p_thread_info)
     {
         CLEAN(p_info);
         return NULL;
     }
-    if (-1 == (*p_thread_info)->sock)
+
+    if (-1 == (p_thread_info)->sock)
     {
         errno = EBADF;
         perror("worker file descriptor passed is invalid");
+        return NULL;
+    }
+    if (-1 == (p_thread_info)->sock)
+    {
+        errno = EBADF;
+        fprintf(stderr, "%s worker file descriptor passed is invalid\n", __func__);
         return NULL;
     }
 
@@ -174,10 +183,11 @@ void * worker_func (void * p_info)
 
     while (g_running)
     {
-        det_op_ret = determine_operation(*p_thread_info);
-        if ((0 == (*p_thread_info)->operation) && (0 == det_op_ret))
+        det_op_ret = determine_operation((p_thread_info));
+        if (((SUBMIT_JOB == p_thread_info->operation) && (0 == det_op_ret)) ||
+            ((SHUTDOWN == p_thread_info->operation) && (0 == det_op_ret)))
         {
-            pthread_cancel((*p_thread_info)->t_id);
+            break;
         }
 
         if (-1 == det_op_ret)
@@ -193,7 +203,7 @@ int main (int argc, char ** argv)
 {
     struct sigaction handle_sigint = { 0 };
     handle_sigint.sa_handler       = sigint_handler;
-    sigfillset(&handle_sigint.sa_mask);
+    // sigfillset(&handle_sigint.sa_mask);
     handle_sigint.sa_flags         = 0;
     sigaction(SIGINT, &handle_sigint, NULL);
 
@@ -242,8 +252,17 @@ int main (int argc, char ** argv)
 
     if (false == g_running)
     {
+        printf("cleaning up broadcast\n");
         pthread_cond_broadcast(&condition);
         pthread_join(broadcast_thread, NULL);
+    }
+
+    for (int i = 0; i < num_clients; i++)
+    {
+        if (worker_threads[i])
+        {
+            pthread_join(worker_threads[i], NULL);
+        }
     }
 
     close(scheduler_fd);

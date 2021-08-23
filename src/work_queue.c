@@ -28,7 +28,7 @@ work_queue_t * wqueue_init()
     return p_wqueue;
 }
 
-bool enqueue_work (work_t * p_work)
+int enqueue_work (work_t * p_work)
 {
     if ((NULL == p_wqueue) || (NULL == p_work))
     {
@@ -166,7 +166,7 @@ work_queue_t * resize_wqueue ()
     return p_wqueue;
 }
 
-bool wqueue_destroy ()
+int wqueue_destroy ()
 {
     if ((NULL == p_wqueue) || (NULL == p_wqueue->p_work))
     {

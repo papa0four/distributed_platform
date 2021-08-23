@@ -1,3 +1,5 @@
+#include <stdlib.h>
+#include <time.h>
 #include "../includes/global_data.h"
 
 job_t           ** pp_jobs;
@@ -7,9 +9,9 @@ pthread_mutex_t    running_mutex;
 pthread_mutex_t    wqueue_mutex;
 pthread_cond_t     condition;
 volatile size_t    jobs_list_len;
-volatile bool      g_running;
 int                num_clients;
 pthread_t          worker_threads[MAX_CLIENTS];
+volatile sig_atomic_t      g_running;
 
 int initialize_global_data ()
 {
@@ -73,6 +75,14 @@ int initialize_global_data ()
     return 0;
 }
 
+static size_t get_jobid ()
+{
+    size_t min = 1;
+    size_t max = MAX_ID;
+
+    return min + rand() % ((max + 1) - min);
+}
+
 int populate_jobs_and_queue (job_t * p_job)
 {
     if (NULL == p_job)
@@ -87,7 +97,7 @@ int populate_jobs_and_queue (job_t * p_job)
     {
         if (NULL == pp_jobs[idx])
         {
-            p_job->job_id = idx;
+            p_job->job_id = get_jobid();
             for (size_t jdx = 0; jdx < p_job->num_items; jdx++)
             {
                 p_job->p_work[jdx].job_id = p_job->job_id;
@@ -146,7 +156,7 @@ void recv_answer (int worker_conn, int32_t answer)
     pthread_mutex_unlock(&jobs_list_mutex);
 }
 
-bool jobs_done (job_t * p_job)
+int jobs_done (job_t * p_job)
 {
     size_t      completed_cnt = 0;
     uint32_t    job_id        = 0;
@@ -186,7 +196,7 @@ void populate_wqueue (job_t * p_job)
         perror("job parameter passed is NULL");
         return;
     }
-    bool b_enqueued = false;
+    int b_enqueued = false;
     for (size_t idx = 0; idx < p_job->num_items; idx++)
     {
         b_enqueued = enqueue_work(&p_job->p_work[idx]);

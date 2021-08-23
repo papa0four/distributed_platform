@@ -208,8 +208,8 @@ def handle_submitter(conn_fd: int) -> None:
             if (bytes_sent <= 0):
                 print("could not send shutdown flag")
                 exit()
-        except IOError as senderr:
-            print(f"could not establish send connection to scheduler: {senderr}")
+        except (IOError, AttributeError):
+            print(f"could not establish send connection to scheduler")
             exit()
         print(f"sending shutdown flag...")
         exit()
@@ -243,7 +243,7 @@ def handle_submitter(conn_fd: int) -> None:
         bytes_recv = conn_fd.recv(job_id_len)
         job_id = int.from_bytes(bytes_recv, "big", signed=False)
         print(f"Job ID recv'd: {job_id}")
-    except AttributeError:
+    except (AttributeError, ConnectionResetError):
         exit()
 
 if __name__ == "__main__":
