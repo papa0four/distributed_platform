@@ -13,7 +13,7 @@
  * @member b_work_done - a true/false switch determining if work is finished
  * @member p_chain - the chain of operations to perform on the item
  */
-typedef struct _work_t
+typedef struct work_t
 {
     uint32_t    job_id;
     uint32_t    iterations;
@@ -33,7 +33,7 @@ typedef struct _work_t
  * @member num_items - the number of operands in which the work with be operated on
  * @member num_operations - the number of operations to perform on a single item
  */
-typedef struct _job_t
+typedef struct job_t
 {
     uint32_t    job_id;
     work_t    * p_work;
@@ -41,6 +41,32 @@ typedef struct _job_t
     uint32_t    num_items;
     uint32_t    num_operations;
 } job_t;
+
+/**
+ * @brief - stores necessary data for the work results and other relevant data for
+ *          the work queried by the submitter
+ * @member job_id - the associated job id for the work queried
+ * @member p_answers - an array of int32_t values meant to be each task's answer
+ * @member num_results - the total number of completed tasks that has answers
+ * @member average - a decimal value to store the average of the answers (to be packed and sent)
+ * @member packed - meant to store the average prepared to send back to the submitter
+ */
+typedef struct query
+{
+    uint32_t      job_id;
+    int32_t     * p_answers;
+    uint32_t      num_completed;
+    uint32_t      num_total;
+    long double   average;
+    uint32_t      packed;
+} query_t;
+
+typedef struct query_response
+{
+    uint32_t computed;
+    uint32_t total;
+    uint32_t packed;
+} query_response_t;
 
 /**
  * @brief - takes a pointer to the submit job payload struct in order to

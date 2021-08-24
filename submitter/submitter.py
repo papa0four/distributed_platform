@@ -2,7 +2,8 @@
 
 import argparse
 import re
-from typing import Tuple
+from typing import Tuple, Dict
+import struct
 import sys
 
 if __name__ == "__main__" and __package__ is None:
@@ -15,6 +16,7 @@ if __name__ == "__main__" and __package__ is None:
 import modules.connect_to_scheduler as cts
 import modules.help_msg as hm
 import modules.pack_protocols as p_protocols
+import modules.unpack_data as unpack
 
 serv_info: Tuple = ()
 
@@ -196,8 +198,9 @@ def handle_submitter(conn_fd: int) -> None:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument('-n', dest="options", nargs='+', type=str)
     parser.add_argument('-s', dest="shutdown", action='store_true')
+    parser.add_argument('-q' '--query', dest='query', nargs=1, type=int)
     parser.add_argument('-h', '--help', dest="help", action='store_true')
-    args = parser.parse_args()
+    args, unused = parser.parse_known_args()
     
     if args.shutdown == True:
         shutdown = 5
@@ -216,35 +219,59 @@ def handle_submitter(conn_fd: int) -> None:
     elif args.help == True:
         hm.usage_msg()
         exit()
-
-    operation_list = args.options[0].split(' ')
-    operation_chain = args.options[1].split(' ')
-    iterations = args.options[2]
-    if args.options == None or len(args.options) != 3:
-        hm.usage_msg()
-        exit()
-
-    op_list = valid_operand_check(operation_list[0])
-    if len(operation_chain) > 1:
-        op_chain = valid_opchain_check(operation_chain[1])
-    else:
-        op_chain = valid_opchain_check(operation_chain[0])
-    header = p_protocols.Packet_Protocol(protocol_version, submit_job)
-    hdr = header.create_protocol_header(protocol_version, submit_job)
-    payload = create_payload(len(op_chain), op_chain, iterations, 
-                len(op_list), op_list)
-    packet = hdr + payload
-    try:
-        bytes_sent = conn_fd.send(packet)
-        if bytes_sent <= 0:
-            print("no bytes sent to scheduler")
+    elif args.options is not None:
+        operation_list = args.options[0].split(' ')
+        operation_chain = args.options[1].split(' ')
+        iterations = args.options[2]
+        if args.options == None or len(args.options) != 3:
+            hm.usage_msg()
             exit()
-        print(f"job submitted {len(packet)} bytes sent ...")
-        bytes_recv = conn_fd.recv(job_id_len)
-        job_id = int.from_bytes(bytes_recv, "big", signed=False)
-        print(f"Job ID recv'd: {job_id}")
-    except (AttributeError, ConnectionResetError):
-        exit()
+
+        op_list = valid_operand_check(operation_list[0])
+        if len(operation_chain) > 1:
+            op_chain = valid_opchain_check(operation_chain[1])
+        else:
+            op_chain = valid_opchain_check(operation_chain[0])
+        header = p_protocols.Packet_Protocol(protocol_version, submit_job)
+        hdr = header.create_protocol_header(protocol_version, submit_job)
+        payload = create_payload(len(op_chain), op_chain, iterations, 
+                    len(op_list), op_list)
+        packet = hdr + payload
+        try:
+            bytes_sent = conn_fd.send(packet)
+            if bytes_sent <= 0:
+                print("no bytes sent to scheduler")
+                exit()
+            print(f"job submitted {len(packet)} bytes sent ...")
+            bytes_recv = conn_fd.recv(job_id_len)
+            job_id = int.from_bytes(bytes_recv, "big", signed=False)
+            print(f"Job ID recv'd: {job_id}")
+        except (AttributeError, ConnectionResetError):
+            exit()
+    elif args.query is not None:
+        query_status = 1
+        response_size = 12
+        response: Dict = {}
+        job_id = args.query[0]
+        header = p_protocols.Packet_Protocol(protocol_version, query_status)
+        bytify = p_protocols.Bytes()
+        hdr = header.create_protocol_header(protocol_version, query_status)
+        payload = bytify.convert_to_bytes(int(job_id))
+        packet = hdr + payload
+        print(f"packet to send: {packet}")
+        try:
+            bytes_sent = conn_fd.send(packet)
+            if bytes_sent <= 0:
+                print("no bytes sent to scheduler")
+                exit()
+            print("please wait while the server gathers your data ...")
+            bytes_recv = conn_fd.recv(1024)
+            computed, total, average = struct.unpack('>' + ('IId' + (len(bytes_recv) + 4)), bytes_recv)
+            print(f"computed: {computed}, total: {total}, average: {average}")
+
+        except (AttributeError, ConnectionResetError):
+            exit()
+
 
 if __name__ == "__main__":
     conn_fd = cts.connect_to_scheduler()

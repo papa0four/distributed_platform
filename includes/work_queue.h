@@ -41,7 +41,7 @@ work_queue_t * wqueue_init ();
  * @param p_work - a pointer to the work structure containing all instructions
  * @return - true upon successful addition of work, false on errors
  */
-int enqueue_work (work_t * p_work);
+int enqueue_work (work_queue_t * p_queue, work_t * p_work);
 
 /**
  * @brief - pop's a work instruction off the top of the queue,
@@ -50,7 +50,7 @@ int enqueue_work (work_t * p_work);
  * @return - returns the work structure to be passed to the worker
  *           and free's the node structure, return's NULL on error
  */
-work_t * dequeue_work ();
+work_t * dequeue_work (work_queue_t * p_queue);
 
 /**
  * @brief - checks to see if the current queue is full
@@ -58,7 +58,7 @@ work_t * dequeue_work ();
  * @return - 1 if current queue->size == capacity, 0 if not 
  *           and -1 on error
  */
-int is_full ();
+int is_full (work_queue_t * p_queue);
 
 /**
  * @brief - checks to see if current queue is empty
@@ -66,14 +66,14 @@ int is_full ();
  * @return - 1 if current queue->size == 0, 0 if not
  *           and -1 on error
  */
-int is_empty ();
+int is_empty (work_queue_t * p_queue);
 
 /**
  * @brief - checks the current length of the work queue
  * @param p_tqueue - a pointer to the overarching queue structure
  * @return - the value stored a p_tqueue->q_size, -1 on error
  */
-int wqueue_len ();
+int wqueue_len (work_queue_t * p_queue);
 
 /**
  * @brief - helper function: used to dynamically resize the overall
@@ -82,7 +82,7 @@ int wqueue_len ();
  * @return - a pointer to the newly resized queue container, NULL
  *           on error
  */
-work_queue_t * resize_wqueue ();
+work_queue_t * resize_wqueue (work_queue_t * p_queue);
 
 /**
  * @brief - eliminates current queue, free'ing all nodes and the
@@ -90,6 +90,6 @@ work_queue_t * resize_wqueue ();
  * @param p_tqueue - a pointer to the overarching queue structure
  * @return - true upon proper tear down of the queue, false on error
  */
-int wqueue_destroy ();
+int wqueue_destroy (work_queue_t * p_queue);
 
 #endif

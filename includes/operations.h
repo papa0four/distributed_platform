@@ -13,6 +13,7 @@
 
 // define operations
 #define SUBMIT_JOB      0
+#define QUERY_STATUS    1
 #define QUERY_WORK      3
 #define SUBMIT_WORK     4
 #define SHUTDOWN        5

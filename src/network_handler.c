@@ -234,13 +234,42 @@ int handle_working_socket (struct addrinfo * hints, char * p_port)
     return scheduler_fd;
 }
 
+void add_to_threadlist (thread_info_t ** p_threads, int idx, int new_connection)
+{
+    int pthread_ret = -1;
+
+    p_threads[idx] = calloc(1, sizeof(thread_info_t));
+    if (NULL == p_threads[idx])
+    {
+        errno = ENOMEM;
+        fprintf(stderr, "%s() - could not allocate memory for thread information struct\n", __func__);
+        return;
+    }
+
+    p_threads[idx]->sock = new_connection;
+    num_clients++;
+
+    pthread_ret = pthread_create(&p_threads[idx]->t_id, NULL,
+        worker_func, (void *)p_threads[idx]);
+    if (0 != pthread_ret)
+    {
+        fprintf(stderr, "could not create worker thread\n");
+        close(p_threads[idx]->sock);
+        CLEAN(p_threads[idx]);
+        CLEAN(p_threads);
+    }
+    else
+    {
+        return;
+    }
+}
+
 thread_info_t ** handle_worker_connections (int scheduler_fd, struct addrinfo * hints,
                                 socklen_t scheduler_len)
 
 {
     int idx             = 0;
-    int pthread_ret     = -1;
-    int timeout         = 10000;    // equates to 10 seconds
+    int timeout         = 20000;    // equates to 20 seconds
     int fd_count        = 1;
     int fd_size         = MAX_CLIENTS;
 
@@ -286,37 +315,14 @@ thread_info_t ** handle_worker_connections (int scheduler_fd, struct addrinfo * 
                     {
                         fprintf(stderr, "%s accept fail\n", __func__);
                         g_running = false;
-                        shutdown(scheduler_fd, SHUT_RDWR);
-                        CLEAN(pfds);
-                        CLEAN(p_threads);
-                        return NULL;
+                        goto CLEANUP;
                     }
                     else
                     {
-                        p_threads[idx] = calloc(1, sizeof(thread_info_t));
-                        if (NULL == p_threads[idx])
+                        add_to_threadlist(p_threads, idx, new_conn);
+                        if (NULL == p_threads)
                         {
-                            errno = ENOMEM;
-                            fprintf(stderr, "%s() - could not allocate memory for thread information struct\n", __func__);
-                            CLEAN(pfds);
-                            CLEAN(p_threads);
-                            close(scheduler_fd);
-                            return NULL;
-                        }
-
-                        p_threads[idx]->sock = new_conn;
-                        num_clients++;
-
-                        pthread_ret = pthread_create(&p_threads[idx]->t_id, NULL,
-                            worker_func, (void *)p_threads[idx]);
-                        if (0 != pthread_ret)
-                        {
-                            fprintf(stderr, "could not create worker thread\n");
-                            CLEAN(pfds);
-                            close(p_threads[idx]->sock);
-                            CLEAN(p_threads[idx]);
-                            CLEAN(p_threads);
-                            return NULL;
+                            goto ERROR;
                         }
 
                         if (MAX_CLIENTS == (num_clients + 1))
@@ -341,24 +347,12 @@ thread_info_t ** handle_worker_connections (int scheduler_fd, struct addrinfo * 
 
     CLEAN(pfds);
     return p_threads;
-
-// CLEANUP:
-    // printf("start cleanup\n");
-    // pthread_cond_broadcast(&condition);
-    // shutdown(scheduler_fd, SHUT_RDWR);
-    // for (size_t i = 0; i < MAX_CLIENTS; i++)
-    // {
-    //     if (p_threads[i])
-    //     {
-    //         pthread_join(p_threads[i]->t_id, NULL);
-    //         CLEAN(p_threads[i]);
-    //         sleep(1);
-    //     }
-    // }
-
-    // CLEAN(pfds);
-    // CLEAN(p_threads);
-    // return NULL;
+CLEANUP:
+    shutdown(scheduler_fd, SHUT_RDWR);
+    CLEAN(p_threads);
+ERROR:
+    CLEAN(pfds);
+    return NULL;
 }
 
 /*** end network_handler.c ***/

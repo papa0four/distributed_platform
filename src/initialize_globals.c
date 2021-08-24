@@ -1,9 +1,10 @@
+#define _GNU_SOURCE
 #include <stdlib.h>
-#include <time.h>
 #include "../includes/global_data.h"
 
 job_t           ** pp_jobs;
-work_queue_t     * p_wqueue;
+work_queue_t     * p_job_queue;
+work_queue_t     * p_progress_queue;
 pthread_mutex_t    jobs_list_mutex;
 pthread_mutex_t    running_mutex;
 pthread_mutex_t    wqueue_mutex;
@@ -22,37 +23,43 @@ int initialize_global_data ()
     func_ret = pthread_cond_init(&condition, NULL);
     if (0 != func_ret)
     {
-        fprintf(stderr, "could not initialize pthread_cond\n");
+        fprintf(stderr, "%s could not initialize pthread_cond\n", __func__);
         return -1;
     }
 
     func_ret = pthread_mutex_init(&wqueue_mutex, NULL);
     if (0 != func_ret)
     {
-        fprintf(stderr, "could not initialize queue mutex\n");
+        fprintf(stderr, "%s could not initialize queue mutex\n", __func__);
         return -1;
     }
 
     func_ret = pthread_mutex_init(&running_mutex, NULL);
     if (0 != func_ret)
     {
-        fprintf(stderr, "could not initialize running mutex\n");
+        fprintf(stderr, "%s could not initialize running mutex\n", __func__);
         return -1;
     }
 
     func_ret = pthread_mutex_init(&jobs_list_mutex, NULL);
     if (0 != func_ret)
     {
-        fprintf(stderr, "could not initialize jobs list mutex\n");
+        fprintf(stderr, "%s could not initialize jobs list mutex\n", __func__);
         return -1;
     }
 
-    // initialize work queue
-    p_wqueue = wqueue_init();
-    if (NULL == p_wqueue)
+    // initialize job queue
+    p_job_queue = wqueue_init();
+    if (NULL == p_job_queue)
     {
-        fprintf(stderr, "could not intialize work queue\n");
+        fprintf(stderr, "%s could not intialize work queue\n", __func__);
         return -1;
+    }
+
+    p_progress_queue = wqueue_init();
+    if (NULL == p_progress_queue)
+    {
+        fprintf(stderr, "%s could not intialize progress queue\n", __func__);
     }
 
     // set max job list size
@@ -63,8 +70,8 @@ int initialize_global_data ()
     if (NULL == pp_jobs)
     {
         errno = ENOMEM;
-        perror("could not allocate memory for jobs list");
-        CLEAN(p_wqueue);
+        perror("initialize_global_data could not allocate memory for jobs list");
+        CLEAN(p_job_queue);
         return -1;
     }
 
@@ -77,8 +84,14 @@ static size_t get_jobid ()
 {
     size_t min = 1;
     size_t max = MAX_ID;
+    size_t result;
 
-    return min + rand() % ((max + 1) - min);
+    srand(time(NULL));
+
+
+    result = min + rand() % ((max + 1) - min);
+
+    return result;
 }
 
 int populate_jobs_and_queue (job_t * p_job)
@@ -96,13 +109,19 @@ int populate_jobs_and_queue (job_t * p_job)
         if (NULL == pp_jobs[idx])
         {
             p_job->job_id = get_jobid();
+            usleep(SLEEPYTIME);
             for (size_t jdx = 0; jdx < p_job->num_items; jdx++)
             {
                 p_job->p_work[jdx].job_id = p_job->job_id;
             }
             pp_jobs[idx] = p_job;
-            populate_wqueue(pp_jobs[idx]);
+            populate_queue(p_job_queue, pp_jobs[idx]);
+            populate_queue(p_progress_queue, pp_jobs[idx]);
             pthread_mutex_unlock(&jobs_list_mutex);
+
+            int len = wqueue_len(p_progress_queue);
+            printf("progress queue length: %d\n", len);
+
             return idx;
         }
     }
@@ -186,18 +205,19 @@ int jobs_done (job_t * p_job)
     return false;
 }
 
-void populate_wqueue (job_t * p_job)
+void populate_queue (work_queue_t * p_queue, job_t * p_job)
 {
-    if (NULL == p_job)
+    if ((NULL == p_queue) || (NULL == p_job))
     {
         errno = EINVAL;
-        perror("job parameter passed is NULL");
+        fprintf(stderr, "%s one or more parameters passed are NULL\n", __func__);
         return;
     }
+
     int b_enqueued = false;
     for (size_t idx = 0; idx < p_job->num_items; idx++)
     {
-        b_enqueued = enqueue_work(&p_job->p_work[idx]);
+        b_enqueued = enqueue_work(p_queue, &p_job->p_work[idx]);
         if (false == b_enqueued)
         {
             fprintf(stderr, "could not add work to queue\n");

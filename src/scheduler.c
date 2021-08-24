@@ -81,10 +81,12 @@ ssize_t determine_operation (thread_info_t * p_info)
 
     subjob_payload_t * submitter_payload = NULL;
     job_t            * p_new_job         = NULL;
+    query_t          * p_query           = NULL;
     ssize_t            populate_ret      = -1;
     ssize_t            bytes_sent        = -1;
     uint32_t           job_id;
     int                close_fd          = SHUTDOWN;
+    int                ret_val           = -1;
 
     switch (operation)
     {
@@ -121,6 +123,34 @@ ssize_t determine_operation (thread_info_t * p_info)
             CLEAN(submitter_payload->items);
             CLEAN(submitter_payload->op_groups);
             CLEAN(submitter_payload);
+            break;
+
+        case QUERY_STATUS:
+            printf("query packet received from submitter\n");
+            printf("gathering status data ...\n");
+            p_query = get_requested_job(p_info->sock);
+            if (NULL == p_query)
+            {
+                fprintf(stderr, "%s could not receive job query request from submitter\n", __func__);
+                return -1;
+            }
+            p_query = query_task_status(p_query, p_query->job_id);
+            if (NULL == p_query)
+            {
+                uint32_t error = ERR;
+                bytes_sent = send(p_info->sock, &error, sizeof(uint32_t), 0);
+                if (-1 == bytes_sent)
+                {
+                    fprintf(stderr, "%s could not send 'NO JOB FOUND' message to submitter\n", __func__);
+                }
+                return -1;
+            }
+            ret_val = send_query_results(p_query, p_info->sock);
+            if (-1 == ret_val)
+            {
+                fprintf(stderr, "%s could not send query status results to submitter\n", __func__);
+                return -1;
+            }
             break;
 
         case QUERY_WORK:
@@ -185,7 +215,8 @@ void * worker_func (void * p_info)
     {
         det_op_ret = determine_operation((p_thread_info));
         if (((SUBMIT_JOB == p_thread_info->operation) && (0 == det_op_ret)) ||
-            ((SHUTDOWN == p_thread_info->operation) && (0 == det_op_ret)))
+            ((SHUTDOWN == p_thread_info->operation) && (0 == det_op_ret)) ||
+            ((QUERY_STATUS == p_thread_info->operation) && (0 == det_op_ret)))
         {
             break;
         }
@@ -254,7 +285,7 @@ int main (int argc, char ** argv)
         fprintf(stderr, "%s nothing returned in handle_worker\n", __func__);
         shutdown(scheduler_fd, SHUT_RDWR);
         destroy_jobs();
-        wqueue_destroy();
+        wqueue_destroy(p_job_queue);
         CLEAN(pp_jobs);
         return EXIT_FAILURE;
     }
@@ -278,7 +309,8 @@ int main (int argc, char ** argv)
     CLEAN(p_threads);
     shutdown(scheduler_fd, SHUT_RDWR);
     destroy_jobs();
-    wqueue_destroy();
+    wqueue_destroy(p_progress_queue);
+    wqueue_destroy(p_job_queue);
     CLEAN(pp_jobs);
     return EXIT_SUCCESS;    
 }

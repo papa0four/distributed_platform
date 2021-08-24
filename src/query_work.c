@@ -3,7 +3,7 @@
 
 void send_task_to_worker (int worker_fd)
 {
-    work_t * p_work = dequeue_work();
+    work_t * p_work = dequeue_work(p_job_queue);
     if (NULL == p_work)
     {
         if (0 == g_running)

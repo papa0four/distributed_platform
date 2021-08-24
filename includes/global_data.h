@@ -3,15 +3,18 @@
 
 #include <pthread.h>
 #include <arpa/inet.h>
+#include <time.h>
+#include <unistd.h>
 #include "work_queue.h"
 
 #define MAX_CLIENTS 100
+#define SLEEPYTIME  850000
 
 /**
  * @brief - declaration of global variables
  * @var g_running - global, exportable bool to trigger state of driver
  * @var pp_jobs - an array of pointers to job structures
- * @var p_wqueue - a queue container to store the work required for each job
+ * @var p_job_queue - a queue container to store the work required for each job
  * @var job_list_len - the length of the jobs array
  * @var jobs_list_mutex - a mutex type for adding jobs to the job list
  * @var running_mutex - mutex to lock/unlock the status of g_running
@@ -22,7 +25,9 @@ extern job_t ** pp_jobs;
 
 extern volatile size_t jobs_list_len;
 
-extern work_queue_t * p_wqueue;
+extern work_queue_t * p_job_queue;
+
+extern work_queue_t * p_progress_queue;
 
 extern volatile sig_atomic_t g_running;
 
@@ -89,10 +94,11 @@ int jobs_done (job_t * p_job);
 /**
  * @brief - responsible for placing a job's work within the queue to hand off
  *          to each worker
+ * @param p_queue - the queue in which to populate
  * @param p_job - a pointer to the specific job received from the submitter to
  *                enqueue
  * @return - N/A
  */
-void populate_wqueue (job_t * p_job);
+void populate_queue (work_queue_t * p_queue, job_t * p_job);
 
 #endif
