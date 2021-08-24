@@ -91,7 +91,7 @@ int handle_working_socket (struct addrinfo * hints, char * p_port);
  * @param scheduler_len - the size of the scheduler struct for socket communications
  * @return - N/A
  */
-void handle_worker_connections (int scheduler_fd, struct addrinfo * hints,
+thread_info_t ** handle_worker_connections (int scheduler_fd, struct addrinfo * hints,
                                 socklen_t scheduler_len);
 
 #endif

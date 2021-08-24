@@ -70,8 +70,6 @@ int initialize_global_data ()
 
     num_clients = 0;
 
-    memset(worker_threads, 0, MAX_CLIENTS * sizeof(pthread_t));
-
     return 0;
 }
 

@@ -36,8 +36,6 @@ extern pthread_cond_t condition;
 
 extern int num_clients;
 
-extern pthread_t worker_threads[MAX_CLIENTS];
-
 /**
  * @brief - initializes all global variables to include:
  *              global running flag --> bool type

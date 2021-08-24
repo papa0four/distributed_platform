@@ -234,7 +234,7 @@ int handle_working_socket (struct addrinfo * hints, char * p_port)
     return scheduler_fd;
 }
 
-void handle_worker_connections (int scheduler_fd, struct addrinfo * hints,
+thread_info_t ** handle_worker_connections (int scheduler_fd, struct addrinfo * hints,
                                 socklen_t scheduler_len)
 
 {
@@ -249,7 +249,7 @@ void handle_worker_connections (int scheduler_fd, struct addrinfo * hints,
     {
         errno = ENOMEM;
         fprintf(stderr, "%s could not allocate memory for threads array\n", __func__);
-        return;
+        return NULL;
     }
 
     struct pollfd * pfds = calloc(fd_size, sizeof(*pfds));
@@ -258,7 +258,7 @@ void handle_worker_connections (int scheduler_fd, struct addrinfo * hints,
         errno = ENOMEM;
         fprintf(stderr, "%s could not allocate poll fd array\n", __func__);
         CLEAN(p_threads);
-        return;
+        return NULL;
     }
 
     pfds[0].fd      = scheduler_fd;
@@ -271,9 +271,8 @@ void handle_worker_connections (int scheduler_fd, struct addrinfo * hints,
         if (-1 == poll_count)
         {
             CLEAN(pfds);
-            CLEAN(p_threads);
             shutdown(scheduler_fd, SHUT_RDWR);
-            return;
+            return p_threads;
         }
 
         for (i = 0; i < fd_count; i++)
@@ -285,9 +284,12 @@ void handle_worker_connections (int scheduler_fd, struct addrinfo * hints,
                     int new_conn = accept(scheduler_fd, (struct sockaddr *)&hints->ai_addr, &scheduler_len);
                     if (-1 == new_conn)
                     {
+                        fprintf(stderr, "%s accept fail\n", __func__);
                         g_running = false;
                         shutdown(scheduler_fd, SHUT_RDWR);
-                        goto CLEANUP;
+                        CLEAN(pfds);
+                        CLEAN(p_threads);
+                        return NULL;
                     }
                     else
                     {
@@ -299,7 +301,7 @@ void handle_worker_connections (int scheduler_fd, struct addrinfo * hints,
                             CLEAN(pfds);
                             CLEAN(p_threads);
                             close(scheduler_fd);
-                            return;
+                            return NULL;
                         }
 
                         p_threads[idx]->sock = new_conn;
@@ -310,17 +312,18 @@ void handle_worker_connections (int scheduler_fd, struct addrinfo * hints,
                         if (0 != pthread_ret)
                         {
                             fprintf(stderr, "could not create worker thread\n");
+                            CLEAN(pfds);
                             close(p_threads[idx]->sock);
                             CLEAN(p_threads[idx]);
-                            break;
+                            CLEAN(p_threads);
+                            return NULL;
                         }
-
-                        worker_threads[idx] = p_threads[idx]->t_id;
 
                         if (MAX_CLIENTS == (num_clients + 1))
                         {
                             printf("max clients connected ... ");
-                            break;
+                            CLEAN(pfds);
+                            return p_threads;
                         }
 
                         idx++;
@@ -331,28 +334,31 @@ void handle_worker_connections (int scheduler_fd, struct addrinfo * hints,
             {
                 printf("timeout occurred\n");
                 g_running = false;
-                goto CLEANUP;
+                break;
             }
         }
     }
 
-CLEANUP:
-    printf("start cleanup\n");
-    pthread_cond_broadcast(&condition);
-    shutdown(scheduler_fd, SHUT_RDWR);
-    for (size_t i = 0; i < MAX_CLIENTS; i++)
-    {
-        if (p_threads[i])
-        {
-            pthread_join(p_threads[i]->t_id, NULL);
-            CLEAN(p_threads[i]);
-            sleep(1);
-        }
-    }
-
     CLEAN(pfds);
-    CLEAN(p_threads);
-    return;
+    return p_threads;
+
+// CLEANUP:
+    // printf("start cleanup\n");
+    // pthread_cond_broadcast(&condition);
+    // shutdown(scheduler_fd, SHUT_RDWR);
+    // for (size_t i = 0; i < MAX_CLIENTS; i++)
+    // {
+    //     if (p_threads[i])
+    //     {
+    //         pthread_join(p_threads[i]->t_id, NULL);
+    //         CLEAN(p_threads[i]);
+    //         sleep(1);
+    //     }
+    // }
+
+    // CLEAN(pfds);
+    // CLEAN(p_threads);
+    // return NULL;
 }
 
 /*** end network_handler.c ***/

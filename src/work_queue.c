@@ -16,7 +16,7 @@ work_queue_t * wqueue_init()
     p_wqueue->size      = 0;
     p_wqueue->capacity  = QUEUE_CAPACITY;
 
-    p_wqueue->p_work = calloc(QUEUE_CAPACITY, sizeof(work_t));
+    p_wqueue->p_work = calloc(QUEUE_CAPACITY, sizeof(work_t *));
     if (NULL == p_wqueue->p_work)
     {
         errno = ENOMEM;
@@ -67,8 +67,6 @@ work_t * dequeue_work ()
 {
     if (NULL == p_wqueue)
     {
-        errno = EINVAL;
-        perror("the queue is NULL");
         return NULL;
     }
 

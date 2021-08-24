@@ -203,7 +203,7 @@ int main (int argc, char ** argv)
 {
     struct sigaction handle_sigint = { 0 };
     handle_sigint.sa_handler       = sigint_handler;
-    // sigfillset(&handle_sigint.sa_mask);
+    sigfillset(&handle_sigint.sa_mask);
     handle_sigint.sa_flags         = 0;
     sigaction(SIGINT, &handle_sigint, NULL);
 
@@ -248,24 +248,35 @@ int main (int argc, char ** argv)
         return EXIT_FAILURE;
     }
 
-    handle_worker_connections(scheduler_fd, &scheduler, scheduler.ai_addrlen);
+    thread_info_t ** p_threads = handle_worker_connections(scheduler_fd, &scheduler, scheduler.ai_addrlen);
+    if (NULL == p_threads)
+    {
+        fprintf(stderr, "%s nothing returned in handle_worker\n", __func__);
+        shutdown(scheduler_fd, SHUT_RDWR);
+        destroy_jobs();
+        wqueue_destroy();
+        CLEAN(pp_jobs);
+        return EXIT_FAILURE;
+    }
 
     if (false == g_running)
     {
-        printf("cleaning up broadcast\n");
         pthread_cond_broadcast(&condition);
         pthread_join(broadcast_thread, NULL);
     }
 
-    for (int i = 0; i < num_clients; i++)
+    pthread_cond_broadcast(&condition);
+    for (size_t idx = 0; idx < MAX_CLIENTS; idx++)
     {
-        if (worker_threads[i])
+        if (p_threads[idx])
         {
-            pthread_join(worker_threads[i], NULL);
+            pthread_join(p_threads[idx]->t_id, NULL);
+            CLEAN(p_threads[idx]);
         }
     }
 
-    close(scheduler_fd);
+    CLEAN(p_threads);
+    shutdown(scheduler_fd, SHUT_RDWR);
     destroy_jobs();
     wqueue_destroy();
     CLEAN(pp_jobs);
