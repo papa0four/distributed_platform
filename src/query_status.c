@@ -1,12 +1,12 @@
 #include "../includes/query_status.h"
 
-uint64_t pack754(long double f, unsigned bits, unsigned expbits)
+uint64_t pack754 (long double f, unsigned bits, unsigned expbits)
 {
-    long double fnorm;
+    double fnorm;
     int         shift;
-    long long   sign;
-    long long   exp;
-    long long   significand;
+    long   sign;
+    long   exp;
+    long   significand;
 
     unsigned significandbits = bits - expbits - 1; // -1 for sign bit
 
@@ -133,17 +133,16 @@ query_t * query_task_status (query_t * p_queried_work, uint32_t job_id)
         fprintf(stderr, "%s query packet structure passed is NULL\n", __func__);
         return NULL;
     }
+
     signed int tasks_complete   = 0;
     signed int tasks_incomplete = 0;
     job_t * p_found_job = find_job(job_id);
     if (NULL == p_found_job)
     {
-        // prepare error message for submitter
+        fprintf(stderr, "requested job not found\n");
         CLEAN(p_queried_work);
         return NULL;
     }
-    
-    printf("p_found_job: %p\n", (void *)p_found_job);
     
     for (uint32_t idx = 0; idx < p_found_job->num_items; idx++)
     {
@@ -187,16 +186,7 @@ query_t * query_task_status (query_t * p_queried_work, uint32_t job_id)
     }
 
     p_queried_work->average /= p_queried_work->num_completed;
-    p_queried_work->packed = pack754_32(p_queried_work->average);
-
-    printf("job_id: %u\nnum completed: %u\n", p_queried_work->job_id, p_queried_work->num_completed);
-    printf("num total: %u\n", p_queried_work->num_total);
-    for (uint32_t idx = 0; idx < p_queried_work->num_completed; idx++)
-    {
-        printf("answer [%u]: %d\n", idx, p_queried_work->p_answers[idx]);
-    }
-    printf("average (before pack): %Lf\n", p_queried_work->average);
-    printf("average (packed): 0x%08" PRIx32 "\n", p_queried_work->packed);
+    p_queried_work->packed = pack754_64(p_queried_work->average);
 
     return p_queried_work;
 }
@@ -214,14 +204,15 @@ int send_query_results (query_t * p_queried_work, int client_conn)
 
     query_response_t q_response = { 0 };
     memcpy(&q_response.computed, &p_queried_work->num_completed, sizeof(uint32_t));
-    q_response.computed = ntohl(q_response.computed);
+    q_response.computed = htonl(q_response.computed);
 
     memcpy(&q_response.total, &p_queried_work->num_total, sizeof(uint32_t));
-    q_response.total = ntohl(q_response.total);
+    q_response.total = htonl(q_response.total);
 
-    memcpy(&q_response.packed, &p_queried_work->packed, sizeof(uint32_t));
+    memcpy(&q_response.packed, &p_queried_work->packed, sizeof(uint64_t));
+    q_response.packed = htobe64(q_response.packed);
 
-    bytes_sent = send(client_conn, &q_response.computed, sizeof(query_response_t), 0);
+    bytes_sent = send(client_conn, &q_response, sizeof(query_response_t), 0);
     if (-1 == bytes_sent)
     {
         errno = EBADF;
@@ -229,26 +220,6 @@ int send_query_results (query_t * p_queried_work, int client_conn)
         CLEAN(p_queried_work->p_answers);
         CLEAN(p_queried_work);
        
-        return -1;
-    }
-
-    bytes_sent = send(client_conn, &q_response.total, sizeof(uint32_t), 0);
-    if (-1 == bytes_sent)
-    {
-        errno = EBADF;
-        fprintf(stderr, "%s could not send query status response to submitter\n", __func__);
-        CLEAN(p_queried_work->p_answers);
-        CLEAN(p_queried_work);
-        return -1;
-    }
-
-    bytes_sent = send(client_conn, &q_response.packed, sizeof(uint32_t), 0);
-    if (-1 == bytes_sent)
-    {
-        errno = EBADF;
-        fprintf(stderr, "%s could not send query status response to submitter\n", __func__);
-        CLEAN(p_queried_work->p_answers);
-        CLEAN(p_queried_work);
         return -1;
     }
 

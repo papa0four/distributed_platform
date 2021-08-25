@@ -58,14 +58,14 @@ typedef struct query
     uint32_t      num_completed;
     uint32_t      num_total;
     long double   average;
-    uint32_t      packed;
+    uint64_t      packed;
 } query_t;
 
 typedef struct query_response
 {
     uint32_t computed;
     uint32_t total;
-    uint32_t packed;
+    uint64_t packed;
 } query_response_t;
 
 /**

@@ -5,6 +5,7 @@ import re
 from typing import Tuple, Dict
 import struct
 import sys
+import binascii
 
 if __name__ == "__main__" and __package__ is None:
     from sys import path
@@ -16,7 +17,6 @@ if __name__ == "__main__" and __package__ is None:
 import modules.connect_to_scheduler as cts
 import modules.help_msg as hm
 import modules.pack_protocols as p_protocols
-import modules.unpack_data as unpack
 
 serv_info: Tuple = ()
 
@@ -250,25 +250,27 @@ def handle_submitter(conn_fd: int) -> None:
             exit()
     elif args.query is not None:
         query_status = 1
-        response_size = 12
-        response: Dict = {}
         job_id = args.query[0]
         header = p_protocols.Packet_Protocol(protocol_version, query_status)
         bytify = p_protocols.Bytes()
         hdr = header.create_protocol_header(protocol_version, query_status)
         payload = bytify.convert_to_bytes(int(job_id))
         packet = hdr + payload
-        print(f"packet to send: {packet}")
         try:
             bytes_sent = conn_fd.send(packet)
             if bytes_sent <= 0:
                 print("no bytes sent to scheduler")
                 exit()
-            print("please wait while the server gathers your data ...")
             bytes_recv = conn_fd.recv(1024)
-            computed, total, average = struct.unpack('>' + ('IId' + (len(bytes_recv) + 4)), bytes_recv)
-            print(f"computed: {computed}, total: {total}, average: {average}")
-
+            if bytes_recv == b'error':
+                print("error: could not receive job status report")
+                print("Job requested not found...")
+                exit()
+            unpacked_data = struct.unpack('!IId', bytes_recv)
+            print(f"Number of answers computed: {unpacked_data[0]}")
+            print(f"Number of total tasks associated with job id {job_id}: {unpacked_data[1]}")
+            print(f"Average of answers computed: {unpacked_data[2]}")
+            exit()
         except (AttributeError, ConnectionResetError):
             exit()
 

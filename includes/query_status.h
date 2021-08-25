@@ -10,8 +10,8 @@
 #include "handle_jobs.h"
 
 //predefined conversion functions
-#define pack754_32(f) (pack754((f), 32, 8))
-#define unpack754_32(i) (unpack((i), 32, 8))
+#define pack754_64(f) (pack754((f), 64, 11))
+#define unpack754_64(i) (unpack754((i), 64, 11))
 
 /**
  * @brief - converts a long double floating point number into a hexidecimal value able
@@ -22,7 +22,7 @@
  * @param expbits - the number of bits contained within the exponent value
  * @return - an unsigned 32 bit value that can be printed in hex and sent over the wire
  */
-uint64_t pack754(long double f, unsigned bits, unsigned expbits);
+uint64_t pack754 (long double f, unsigned bits, unsigned expbits);
 
 /**
  * @brief - converts an unsigned 64 bit integer passed over the wire into the appropriate
@@ -33,7 +33,7 @@ uint64_t pack754(long double f, unsigned bits, unsigned expbits);
  * @param expbits - the number of bits contained within the exponent value
  * @return - a 32 bit long double contained the appropriate value passed over the wire
  */
-long double unpack754(uint64_t i, unsigned bits, unsigned expbits);
+long double unpack754 (uint64_t i, unsigned bits, unsigned expbits);
 
 /**
  * @brief - receives the job id from the submitter and prepares the query packet structure
@@ -41,7 +41,7 @@ long double unpack754(uint64_t i, unsigned bits, unsigned expbits);
  * @return - a pointer to the query_t struct storing the requested job id
  *           NULL on errors either allocating memory or receiving data from the submitter
  */
-query_t * get_requested_job(int client_conn);
+query_t * get_requested_job (int client_conn);
 
 /**
  * @brief - searches the global jobs array looking for the associated job requested

@@ -137,8 +137,9 @@ ssize_t determine_operation (thread_info_t * p_info)
             p_query = query_task_status(p_query, p_query->job_id);
             if (NULL == p_query)
             {
-                uint32_t error = ERR;
-                bytes_sent = send(p_info->sock, &error, sizeof(uint32_t), 0);
+                printf("enter job not found check\n");
+                char error[] = "error\0";
+                bytes_sent = send(p_info->sock, error, strlen(error), 0);
                 if (-1 == bytes_sent)
                 {
                     fprintf(stderr, "%s could not send 'NO JOB FOUND' message to submitter\n", __func__);
