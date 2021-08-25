@@ -14,6 +14,7 @@
 // define operations
 #define SUBMIT_JOB      0
 #define QUERY_STATUS    1
+#define QUERY_RESULTS   2
 #define QUERY_WORK      3
 #define SUBMIT_WORK     4
 #define SHUTDOWN        5
@@ -32,8 +33,8 @@
 
 // clean up macro
 #define CLEAN(a) if(a)free(a);(a)=NULL
-#define true 1
-#define false 0
+#define true    1
+#define false   0
 
 typedef struct thread_info
 {

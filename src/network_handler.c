@@ -269,7 +269,7 @@ thread_info_t ** handle_worker_connections (int scheduler_fd, struct addrinfo * 
 
 {
     int idx             = 0;
-    int timeout         = 20000;    // equates to 20 seconds
+    int timeout         = 60000;    // equates to 60 seconds
     int fd_count        = 1;
     int fd_size         = MAX_CLIENTS;
 

@@ -50,12 +50,10 @@ query_t * get_requested_job (int client_conn);
  * @param p_queried_work - the query_t structure containing the requested job id,
  *                         the remainder of the struct members will be packed within
  *                         this function pending no errors occur
- * @param job_id - the requested job id from the submitter, used to locate the associated job
- *                 and its data
  * @return - fully packed query_t struct containing all relevant data to submit to the submitter
  *           NULL on errors or if there is no work to send to the submitter
  */
-query_t * query_task_status (query_t * p_queried_work, uint32_t job_id);
+query_t * query_task_status (query_t * p_queried_work);
 
 /**
  * 

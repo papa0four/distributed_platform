@@ -125,7 +125,7 @@ query_t * get_requested_job (int client_conn)
     return p_query;
 }
 
-query_t * query_task_status (query_t * p_queried_work, uint32_t job_id)
+query_t * query_task_status (query_t * p_queried_work)
 {
     if (NULL == p_queried_work)
     {
@@ -136,7 +136,7 @@ query_t * query_task_status (query_t * p_queried_work, uint32_t job_id)
 
     signed int tasks_complete   = 0;
     signed int tasks_incomplete = 0;
-    job_t * p_found_job = find_job(job_id);
+    job_t * p_found_job = find_job(p_queried_work->job_id);
     if (NULL == p_found_job)
     {
         fprintf(stderr, "requested job not found\n");
@@ -158,7 +158,6 @@ query_t * query_task_status (query_t * p_queried_work, uint32_t job_id)
 
     if (0 == tasks_complete)
     {
-        // prepare error message for submitted
         CLEAN(p_queried_work);
         return NULL;
     }

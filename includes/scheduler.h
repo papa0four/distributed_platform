@@ -21,6 +21,7 @@
 #include "submit_job.h"
 #include "query_work.h"
 #include "query_status.h"
+#include "query_results.h"
 
 /**
  * @brief - a SIGINT handler to catch ctrl+c keyboard interrupt.

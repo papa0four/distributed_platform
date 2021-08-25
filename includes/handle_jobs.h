@@ -54,19 +54,43 @@ typedef struct job_t
 typedef struct query
 {
     uint32_t      job_id;
+    uint32_t    * p_items;
     int32_t     * p_answers;
     uint32_t      num_completed;
     uint32_t      num_total;
     long double   average;
     uint64_t      packed;
+    int           timeout;
 } query_t;
 
+/**
+ * @brief - stores the necessary data associated with the job requested to send back to submitter
+ * @member computer - the number of tasks completed with answer
+ * @member total - the total number of tasks associated with the requested job
+ * @member packed - the IEEE754 packed hexidecimal value of the computed average (for passing
+ *                  decimals numbers and maintaining signedness over a socket)
+ */
 typedef struct query_response
 {
     uint32_t computed;
     uint32_t total;
     uint64_t packed;
 } query_response_t;
+
+/**
+ * @brief - stores the necessary data associated with the job requested to send back to the submitter
+ * @member status - the status of the job requested (SUCCESS, NOJOB, NOTCOMPLETE)
+ * @member num_results - the number of tasks with computed results
+ * @member p_answers - an array of signed 4 bytes numbers, each being the computed answer to each task
+ */
+typedef struct query_results
+{
+    uint32_t    status;
+    uint32_t    num_results;
+    uint32_t  * p_items;
+    int32_t   * p_answers;
+    int         timeout;
+} query_results_t;
 
 /**
  * @brief - takes a pointer to the submit job payload struct in order to

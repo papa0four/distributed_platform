@@ -82,14 +82,16 @@ ssize_t determine_operation (thread_info_t * p_info)
     subjob_payload_t * submitter_payload = NULL;
     job_t            * p_new_job         = NULL;
     query_t          * p_query           = NULL;
+    query_results_t  * p_response        = NULL;
     ssize_t            populate_ret      = -1;
     ssize_t            bytes_sent        = -1;
-    uint32_t           job_id;
+    uint32_t           job_id            = 0;
     int                close_fd          = SHUTDOWN;
     int                ret_val           = -1;
 
     switch (operation)
     {
+        // client connection is the submitter
         case SUBMIT_JOB:
             submitter_payload = recv_and_pack_payload(p_info->sock);
             if (NULL == submitter_payload)
@@ -125,6 +127,7 @@ ssize_t determine_operation (thread_info_t * p_info)
             CLEAN(submitter_payload);
             break;
 
+        // client connection is the submitter
         case QUERY_STATUS:
             printf("query packet received from submitter\n");
             printf("gathering status data ...\n");
@@ -134,7 +137,7 @@ ssize_t determine_operation (thread_info_t * p_info)
                 fprintf(stderr, "%s could not receive job query request from submitter\n", __func__);
                 return -1;
             }
-            p_query = query_task_status(p_query, p_query->job_id);
+            p_query = query_task_status(p_query);
             if (NULL == p_query)
             {
                 printf("enter job not found check\n");
@@ -154,14 +157,48 @@ ssize_t determine_operation (thread_info_t * p_info)
             }
             break;
 
+        // client connection is the submitter
+        case QUERY_RESULTS:
+            printf("querying computed results\n");
+            p_query = get_query_answers(p_info->sock);
+            if (NULL == p_query)
+            {
+                fprintf(stderr, "%s could not receive job query request from submitter\n", __func__);
+                return -1;
+            }
+            p_query = query_result_status(p_query);
+            p_response = get_answers(p_query);
+            if (NULL == p_response)
+            {
+                fprintf(stderr, "%s could not retrieve answer list from completed tasks\n", __func__);
+                return -1;
+            }
+
+            printf("p_response->status: %u\tp_response->num_results: %u\n", p_response->status, p_response->num_results);
+            for (uint32_t idx = 0; idx < p_response->num_results; idx++)
+            {
+                printf("Item: %u ---> ", p_response->p_items[idx]);
+                printf("answer: %d\n", p_response->p_answers[idx]);
+            }
+            ret_val = send_query_results_response(p_response, p_info->sock);
+            if (-1 == ret_val)
+            {
+                fprintf(stderr, "%s could not send query results to submitter\n", __func__);
+                return -1;
+            }
+            break;
+
+        // client connection is the worker
         case QUERY_WORK:
             send_task_to_worker(p_info->sock);
             break;
 
+        // client connection is the worker
         case SUBMIT_WORK:
             recv_computation(p_info->sock);
             break;
 
+        // client connection is the submitter
         case SHUTDOWN:
         printf("shutdown flag received from client, exiting application...\n");
             bytes_sent = send(p_info->sock, &close_fd, sizeof(int), 0);
@@ -175,12 +212,14 @@ ssize_t determine_operation (thread_info_t * p_info)
             pthread_mutex_unlock(&running_mutex);
             break;
 
+        // error has occurred with either submitter or worker connection
         default:
             fprintf(stderr, "invalid operation received\n");
             CLEAN(p_new_job);
             return -1;
     }
 
+    // return success
     return 0;
 }
 
@@ -217,7 +256,8 @@ void * worker_func (void * p_info)
         det_op_ret = determine_operation((p_thread_info));
         if (((SUBMIT_JOB == p_thread_info->operation) && (0 == det_op_ret)) ||
             ((SHUTDOWN == p_thread_info->operation) && (0 == det_op_ret)) ||
-            ((QUERY_STATUS == p_thread_info->operation) && (0 == det_op_ret)))
+            ((QUERY_STATUS == p_thread_info->operation) && (0 == det_op_ret)) ||
+            ((QUERY_RESULTS == p_thread_info->operation) && (0 == det_op_ret)))
         {
             break;
         }

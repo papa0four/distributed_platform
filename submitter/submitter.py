@@ -17,6 +17,7 @@ if __name__ == "__main__" and __package__ is None:
 import modules.connect_to_scheduler as cts
 import modules.help_msg as hm
 import modules.pack_protocols as p_protocols
+import modules.unpack_data as unpack
 
 serv_info: Tuple = ()
 
@@ -178,6 +179,15 @@ def create_payload(num_ops: int, op_chain: list, iter: int,
 
     return payload
 
+def timeout_range(arg: int) -> int:
+    try:
+        timeout = int(arg)
+    except ValueError:
+        raise argparse.ArgumentTypeError("timeout value must be an unsigned integer")
+    if timeout < 0 or timeout > 10000:
+        raise argparse.ArgumentTypeError("value must be between 0 and 10,000")
+    return timeout
+
 def handle_submitter(conn_fd: int) -> None:
     """
     @brief - main submitter driver to receive the submitter application's 
@@ -198,7 +208,9 @@ def handle_submitter(conn_fd: int) -> None:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument('-n', dest="options", nargs='+', type=str)
     parser.add_argument('-s', dest="shutdown", action='store_true')
-    parser.add_argument('-q' '--query', dest='query', nargs=1, type=int)
+    parser.add_argument('-q', dest='query', nargs=1, type=int)
+    parser.add_argument('-r', dest='results', nargs=1, type=int)
+    parser.add_argument('-t', dest='timeout', nargs=1, type=timeout_range)
     parser.add_argument('-h', '--help', dest="help", action='store_true')
     args, unused = parser.parse_known_args()
     
@@ -219,7 +231,7 @@ def handle_submitter(conn_fd: int) -> None:
     elif args.help == True:
         hm.usage_msg()
         exit()
-    elif args.options is not None:
+    elif args.options is not None and args.timeout is None:
         operation_list = args.options[0].split(' ')
         operation_chain = args.options[1].split(' ')
         iterations = args.options[2]
@@ -248,7 +260,7 @@ def handle_submitter(conn_fd: int) -> None:
             print(f"Job ID recv'd: {job_id}")
         except (AttributeError, ConnectionResetError):
             exit()
-    elif args.query is not None:
+    elif args.query is not None and args.timeout is None:
         query_status = 1
         job_id = args.query[0]
         header = p_protocols.Packet_Protocol(protocol_version, query_status)
@@ -271,6 +283,25 @@ def handle_submitter(conn_fd: int) -> None:
             print(f"Number of total tasks associated with job id {job_id}: {unpacked_data[1]}")
             print(f"Average of answers computed: {unpacked_data[2]}")
             exit()
+        except (AttributeError, ConnectionResetError):
+            exit()
+    elif args.results is not None and args.timeout is not None:
+        result_status = 2
+        job_id = struct.pack('!I', args.results[0])
+        header = p_protocols.Packet_Protocol(protocol_version, result_status)
+        bytify = p_protocols.Bytes()
+        hdr = header.create_protocol_header(protocol_version, result_status)
+        tout = bytify.convert_to_bytes(int(args.timeout[0]))
+        packet = hdr + job_id + tout
+        try:
+            bytes_sent = conn_fd.send(packet)
+            if bytes_sent <= 0:
+                print("no bytes sent to scheduler")
+                exit()
+            bytes_recv = conn_fd.recv(1024)
+            upack = unpack.Unpack_Data()
+            results = upack.unpack_results(bytes_recv)
+            upack.print_results(results, job_id)
         except (AttributeError, ConnectionResetError):
             exit()
 
