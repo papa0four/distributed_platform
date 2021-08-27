@@ -6,9 +6,10 @@
 #include <time.h>
 #include <unistd.h>
 #include "work_queue.h"
+#include "worker.h"
 
 #define MAX_CLIENTS 100
-#define SLEEPYTIME  850000
+#define SLEEPYTIME  1000000
 
 /**
  * @brief - declaration of global variables
@@ -24,6 +25,8 @@
 extern job_t ** pp_jobs;
 
 extern volatile size_t jobs_list_len;
+
+extern size_t max_job_list_sz;
 
 extern work_queue_t * p_job_queue;
 

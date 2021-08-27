@@ -161,14 +161,17 @@ def submit_work_answer(conn_fd: int) -> int:
 
     header = p_protocols.Packet_Protocol(VERSION, SUBMIT_WORK)
     hdr = header.create_protocol_header(VERSION, SUBMIT_WORK)
-    answer = struct.pack('!i', answer)
+    try:
+        answer = struct.pack('!i', answer)
+    except struct.error:
+        exit()
     packet = hdr + answer
     try:
         bytes_sent = conn_fd.send(packet)
         if bytes_sent <= 0:
             print("did not send answer to scheduler")
         return conn_fd
-    except (IOError, socket.error):
+    except (IOError, socket.error, struct.error):
         print(f"an error occurred sending answer")
         return -1
 

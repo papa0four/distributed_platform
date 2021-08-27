@@ -12,6 +12,7 @@
 #include <pthread.h>
 #include <inttypes.h>
 #include <errno.h>
+#include <time.h>
 
 #include "operations.h"
 #include "work_queue.h"
@@ -22,6 +23,7 @@
 #include "query_work.h"
 #include "query_status.h"
 #include "query_results.h"
+#include "make_results_file.h"
 
 /**
  * @brief - a SIGINT handler to catch ctrl+c keyboard interrupt.

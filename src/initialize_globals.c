@@ -4,12 +4,13 @@
 
 job_t           ** pp_jobs;
 work_queue_t     * p_job_queue;
-work_queue_t     * p_progress_queue;
+// work_queue_t     * p_progress_queue;
 pthread_mutex_t    jobs_list_mutex;
 pthread_mutex_t    running_mutex;
 pthread_mutex_t    wqueue_mutex;
 pthread_cond_t     condition;
 volatile size_t    jobs_list_len;
+size_t             max_job_list_sz;
 int                num_clients;
 pthread_t          worker_threads[MAX_CLIENTS];
 volatile sig_atomic_t      g_running;
@@ -56,17 +57,20 @@ int initialize_global_data ()
         return -1;
     }
 
-    p_progress_queue = wqueue_init();
-    if (NULL == p_progress_queue)
-    {
-        fprintf(stderr, "%s could not intialize progress queue\n", __func__);
-    }
+    // p_progress_queue = wqueue_init();
+    // if (NULL == p_progress_queue)
+    // {
+    //     fprintf(stderr, "%s could not intialize progress queue\n", __func__);
+    // }
 
     // set max job list size
-    jobs_list_len = MAX_JOBS;
+    max_job_list_sz = MAX_JOBS;
+
+    jobs_list_len = 0;
+
 
     //allocate jobs list
-    pp_jobs = calloc(jobs_list_len, sizeof(job_t *));
+    pp_jobs = calloc(max_job_list_sz, sizeof(job_t *));
     if (NULL == pp_jobs)
     {
         errno = ENOMEM;
@@ -104,7 +108,7 @@ int populate_jobs_and_queue (job_t * p_job)
     }
 
     pthread_mutex_lock(&jobs_list_mutex);
-    for (size_t idx = 0; idx < jobs_list_len; idx++)
+    for (size_t idx = 0; idx < max_job_list_sz; idx++)
     {
         if (NULL == pp_jobs[idx])
         {
@@ -115,24 +119,24 @@ int populate_jobs_and_queue (job_t * p_job)
                 p_job->p_work[jdx].job_id = p_job->job_id;
             }
             pp_jobs[idx] = p_job;
+            jobs_list_len++;
+
             populate_queue(p_job_queue, pp_jobs[idx]);
-            populate_queue(p_progress_queue, pp_jobs[idx]);
+
             pthread_mutex_unlock(&jobs_list_mutex);
-
-            int len = wqueue_len(p_progress_queue);
-            printf("progress queue length: %d\n", len);
-
-            return idx;
+            pthread_cond_broadcast(&condition);
+            return 0;
         }
     }
     pthread_mutex_unlock(&jobs_list_mutex);
+    pthread_cond_broadcast(&condition);
     fprintf(stderr, "could not place job in jobs list\n");
     return -1;
 }
 
 job_t * find_job (uint32_t job_id)
 {
-    for (size_t idx = 0; idx < jobs_list_len; idx++)
+    for (size_t idx = 0; idx < max_job_list_sz; idx++)
     {
         if ((NULL != pp_jobs[idx]) && (job_id == pp_jobs[idx]->job_id))
         {
@@ -150,6 +154,7 @@ void recv_answer (int worker_conn, int32_t answer)
         perror("worker socket fd passed is invalid");
         return;
     }
+
     pthread_mutex_lock(&jobs_list_mutex);
     for (size_t idx = 0; idx < jobs_list_len; idx++)
     {
@@ -160,17 +165,20 @@ void recv_answer (int worker_conn, int32_t answer)
             {
                 pp_jobs[idx]->p_work[jdx].answer        = answer;
                 pp_jobs[idx]->p_work[jdx].b_work_done   = true;
-
                 if (jobs_done(pp_jobs[idx]))
                 {
                     pp_jobs[idx]->b_job_done = true;
                 }
                 pthread_mutex_unlock(&jobs_list_mutex);
+                pthread_cond_broadcast(&condition);
                 return;
             }
         }
     }
+
     pthread_mutex_unlock(&jobs_list_mutex);
+    pthread_cond_broadcast(&condition);
+    return;
 }
 
 int jobs_done (job_t * p_job)
@@ -200,9 +208,8 @@ int jobs_done (job_t * p_job)
             answer = p_job->p_work[idx].answer;
             printf("\tItem: %u --> Answer: %d\n", item, answer);
         }
-        return true;
     }
-    return false;
+    return true;
 }
 
 void populate_queue (work_queue_t * p_queue, job_t * p_job)

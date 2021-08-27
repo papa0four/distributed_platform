@@ -53,6 +53,7 @@ query_t * query_result_status (query_t * p_queried_work)
     signed int tasks_complete   = 0;
     signed int tasks_incomplete = 0;
     uint32_t   convert_to_milli = 1000;
+    int        b_enqueued       = -1;
     job_t * p_found_job = find_job(p_queried_work->job_id);
     if (NULL == p_found_job)
     {
@@ -67,8 +68,18 @@ query_t * query_result_status (query_t * p_queried_work)
     for (uint32_t idx = 0; idx < p_found_job->num_items; idx++)
     {
         time_t current = time(NULL);
-        if (current == (start + (p_queried_work->timeout / convert_to_milli)))
+        if ((current == (start + (p_queried_work->timeout / convert_to_milli))) &&
+            (false == p_found_job->p_work[idx].b_work_done))
         {
+            printf("p_found_job->job_id: %u\n", p_found_job->job_id);
+            printf("p_found_job->num_items: %u\n", p_found_job->num_items);
+            b_enqueued = enqueue_work(p_job_queue, &p_found_job->p_work[idx]);
+            if (1 != b_enqueued)
+            {
+                fprintf(stderr, "%s could not add failed job back into queue\n", __func__);
+                break;
+            }
+            // printf("p_job_queue->head: %p\tp_job_queue->head->p_work: %p\n", (void *)p_job_queue->head, (void *)p_job_queue->head->p_work);
             break;
         }
         if (p_found_job->p_work[idx].b_work_done)
@@ -83,16 +94,13 @@ query_t * query_result_status (query_t * p_queried_work)
 
     if ((0 == tasks_complete) || ((uint32_t) tasks_complete != p_found_job->num_items))
     {
-        printf("enter NOTCOMPLETED\n");
         p_queried_work->num_completed = tasks_complete;
-        p_queried_work->num_total     = ERR;
+        p_queried_work->num_total     = p_found_job->num_items;
         return p_queried_work;
     }
 
     p_queried_work->num_completed = tasks_complete;
     p_queried_work->num_total     = p_found_job->num_items;
-
-    printf("%s completed vs. total: %u vs. %u\n", __func__, p_queried_work->num_completed, p_queried_work->num_total);
 
     p_queried_work->p_answers     = calloc(tasks_complete, sizeof(int32_t));
     if (NULL == p_queried_work->p_answers)
@@ -270,8 +278,7 @@ int send_query_results_response(query_results_t * p_results, int client_conn)
                 CLEAN(p_results);
                 return -1;
             }
-            // CLEAN(p_results->p_items);
-            // CLEAN(p_results->p_answers);
+
             CLEAN(p_results);
             break;
 
@@ -294,7 +301,6 @@ int send_query_results_response(query_results_t * p_results, int client_conn)
         default:
             fprintf(stderr, "%s invalid packet status\n", __func__);
             return -1;
-
     }
 
     return 0;

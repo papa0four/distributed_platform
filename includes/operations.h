@@ -66,6 +66,7 @@ typedef struct _item_t
     uint32_t item;
 } item_t;
 
+#pragma pack(push, 1)
 /**
  * @brief - a structure containing the platform packet protocol header data
  * @member version - an unsigned 32 bit integer containing the packet protocol
@@ -78,6 +79,7 @@ typedef struct header_t
     uint32_t    version;
     uint32_t    operation;
 } header_t;
+#pragma pack(pop)
 
 /**
  * @brief - a structure containing all the appropriate data received from the

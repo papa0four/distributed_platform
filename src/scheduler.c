@@ -42,16 +42,18 @@ void recv_computation (int worker_conn)
     if (-1 == worker_conn)
     {
         errno = EINVAL;
-        perror("recv_computation - buffer is NULL and/or file descriptor is invalid");
+        fprintf(stderr, "%s worker file descriptor passed is invalid: %s\n", __func__, strerror(errno));
         return;
     }
 
-    ssize_t bytes_recv = -1;
-    int answer = -1;
-
+    ssize_t  bytes_recv = -1;
+    int      answer     = -1;
+    
     bytes_recv = recv(worker_conn, &answer, sizeof(int), 0);
     if (-1 == bytes_recv)
-    {
+    {   
+        errno = EBADF;
+        fprintf(stderr, "%s could not recv answer: %s\n", __func__, strerror(errno));
         return;
     }
     answer = ntohl(answer);
@@ -140,7 +142,6 @@ ssize_t determine_operation (thread_info_t * p_info)
             p_query = query_task_status(p_query);
             if (NULL == p_query)
             {
-                printf("enter job not found check\n");
                 char error[] = "error\0";
                 bytes_sent = send(p_info->sock, error, strlen(error), 0);
                 if (-1 == bytes_sent)
@@ -174,12 +175,6 @@ ssize_t determine_operation (thread_info_t * p_info)
                 return -1;
             }
 
-            printf("p_response->status: %u\tp_response->num_results: %u\n", p_response->status, p_response->num_results);
-            for (uint32_t idx = 0; idx < p_response->num_results; idx++)
-            {
-                printf("Item: %u ---> ", p_response->p_items[idx]);
-                printf("answer: %d\n", p_response->p_answers[idx]);
-            }
             ret_val = send_query_results_response(p_response, p_info->sock);
             if (-1 == ret_val)
             {
@@ -200,7 +195,8 @@ ssize_t determine_operation (thread_info_t * p_info)
 
         // client connection is the submitter
         case SHUTDOWN:
-        printf("shutdown flag received from client, exiting application...\n");
+            printf("shutdown flag received from client, exiting application...\n");
+            printf("this may take a moment while we clean up resources\n");
             bytes_sent = send(p_info->sock, &close_fd, sizeof(int), 0);
             if (0 >= bytes_sent)
             {
@@ -239,12 +235,6 @@ void * worker_func (void * p_info)
     if (-1 == (p_thread_info)->sock)
     {
         errno = EBADF;
-        perror("worker file descriptor passed is invalid");
-        return NULL;
-    }
-    if (-1 == (p_thread_info)->sock)
-    {
-        errno = EBADF;
         fprintf(stderr, "%s worker file descriptor passed is invalid\n", __func__);
         return NULL;
     }
@@ -255,10 +245,11 @@ void * worker_func (void * p_info)
     {
         det_op_ret = determine_operation((p_thread_info));
         if (((SUBMIT_JOB == p_thread_info->operation) && (0 == det_op_ret)) ||
-            ((SHUTDOWN == p_thread_info->operation) && (0 == det_op_ret)) ||
             ((QUERY_STATUS == p_thread_info->operation) && (0 == det_op_ret)) ||
-            ((QUERY_RESULTS == p_thread_info->operation) && (0 == det_op_ret)))
+            ((QUERY_RESULTS == p_thread_info->operation) && (0 == det_op_ret)) ||
+            ((SHUTDOWN == p_thread_info->operation) && (0 == det_op_ret)))
         {
+            num_clients--;
             break;
         }
 
@@ -350,7 +341,7 @@ int main (int argc, char ** argv)
     CLEAN(p_threads);
     shutdown(scheduler_fd, SHUT_RDWR);
     destroy_jobs();
-    wqueue_destroy(p_progress_queue);
+    // wqueue_destroy(p_progress_queue);
     wqueue_destroy(p_job_queue);
     CLEAN(pp_jobs);
     return EXIT_SUCCESS;    
