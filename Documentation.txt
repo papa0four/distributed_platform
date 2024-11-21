@@ -1,0 +1,145 @@
+Overview:
+    There are 3 applications to start in order to run the Distributed Computation
+    Platform. First and foremost is the scheduler, which acts as the server of the
+    platform. The worker application is meant to receive individual tasks submitted 
+    by the client, parse the data, and compute a valid mathematical solution. The last
+    application is the submitter. This application acts as the client, in which the 
+    the user is able to submit command line arguments properly formatted acting as the 
+    math problem to be solved. The submitter is also able to send a shutdown flag from 
+    the command line which will stop all function for all three applications attempting 
+    to gracefully tear down the platform.
+
+Scheduler (written in C):
+    to start the scheduler appplication, move to the overarching directory structure and 
+    run Make. Once successfully made, you run the executable and add a '-p' flag to determine
+    a working port. this port can be any number within a range of 31338 through 65535. Any 
+    other port passed as an argument to the '-p' flag will be deemed in valid. Once the 
+    scheduler is running the worker and submitter are then able to be spun up.
+    Initially, the scheduler listens for a broadcast message sent from both the submitter(s) 
+    and worker(s) in order to establish the "working" connections. Once the scheduler receives
+    the broadcast message(s) it sends the port established through the command line at start up
+    to any incoming connections so that both the submitter(s) and worker(s) can make a TCP 
+    connection for the platform communications. Upon start-up, a few globals objects are created 
+    that are necessary for the platform functionality. Worth noting, are the Jobs array (pp_jobs) 
+    which is an array of job type pointers containing the necessary information for the total jub if 
+    one is submitted by the client or submitter. The other initialized object is the work queue, 
+    which stores each individual task (associated with a specific job) meant to be stored and eventually
+    picked up by a worker upon connection and successfull query. This application also contains the main 
+    driver for the server (scheduler) and handles the connections, communications, and tear down.
+
+    an example of starting up the scheduler looks like the following:
+
+        user@op_sys:~/<working_dir> make (this builds the platform)
+        user@op_sys:~/<working_dir> ./bin/scheduler -p [port in range 31338 - 65535] (execute)
+
+    this will start the platform
+
+Worker (written in python):
+    This application takes no command line arguments to run, just navigation to the file folder
+    and python3 execution. Once the scheduler is up and running, it does not matter if the worker 
+    is started before or after the client. Upon startup, the worker will send out a broadcast message
+    to establish the connection to the scheduler before connecting to the working port.
+    Once the communication channel is established, it waits for work. Regardless, once there is a task 
+    (or work) in the queue, the worker will spawn its own thread and retrieve whatever work is contained in the queue. 
+    Because a job contains multiple tasks, each worker is only responsible for one individual task, regardless of 
+    the job that it is associated with. The worker will retrieve the data from the queue, parse the information,
+    compute the equation based upon the operations/operands, craft the SUBMIT_WORK packet and send it 
+    back to the scheduler. Once the answer is computed and sent back, the worker will return to a waiting 
+    status looking for work to perform and listening for a shutdown command from the scheduler. If at any 
+    point, the connection to the scheduler is terminated, the worker will simply shutdown.
+    Because both the submitter and the worker rely on connection to the scheduler, if execution of 
+    the worker before the scheduler is running, the worker will timeout and shutdown due to failer of receipt
+    from the scheduler.
+
+    an example of starting up a worker:
+
+Submitter (written in python):
+    This is the client application for the platform. The submitter is capable of submitted work to the 
+    scheduler as well as shutting down the entire platform. Initially, the submitter takes in the command 
+    line arguments, sends the broadcast message to establish connection to the shceduler, and 
+    receives the working socket information for the communication channel. If the submitter sends work,
+    it will first parse the command line arguments to appropriately create the job packet before sending 
+    it to the scheduler to process and send to the worker(s). Because the submitter can shutdown the platform 
+    it can handle the shutdown flag and appropriately create a valid packet to inform the platform it is time
+    to shutdown. The syntax for the submitter is important and must be entered appropriately for the job 
+    packet to be created and sent to the scheduler. To submit work, the user must enter a '-n' flag after the 
+    executable followed by the operands and chain of operations. It is important to note that both the 
+    operands and chain of operations must be submitted within quotes (see example below). Additionally, if submitting 
+    multiple operands and operations within the chain, each individual item must be separated by a comma 
+    (see example below). For the chain of operations, the operation to performa and operand in which to 
+    perform the operation on can be paired with no space between (see example below). Lastly, only the intial 
+    operands list and chain of operations are space delimitted and both pairs must be within their own sets of 
+    '""' (see example below). The following operations are permitted:
+            addition        --> represented with a '+'
+            subtraction     --> represented with a '-'
+                NOTE: subtraction can be left or right representation
+                      this means that the operation may be "-5" or "5-"
+                      each operation has its own functionality. This means that
+                      "1,2,3" "-5" equates to "1 - 5", "2 - 5", and "3 - 5", whereas
+                      "1,2,3" "5-" equates to "5 - 1", "5 - 2", and "5 - 3"
+            and             --> represented with a '&'
+            or              --> represented with a '|'
+            xor             --> represented with a '^'
+            not             --> represented with a '~'
+                NOTE: if performing a binary not '~' no operand can be included
+                      example: "1,2,3" "~" will autmatically be parsed as:
+                               "~1", "~2", and "~3"
+                      if the user adds an operand with the not operation, an error will occur
+            shift bits right --> represented with a '=>>'
+            shift bits left  --> represented with a '=<<'
+    with the exception of not, each permitted operation will contain both one of the above symbols
+    (operation) and an operand.
+
+    an example of a job being submitted:
+        user@op_sys:~/<working_dir> python3 submitter.py -n "1,2,3" "+4,-5"
+
+    an example of shutting the platform down:
+        user@op_sys:~/<working_dir> python3 submitter.py -s
+        NOTE: is calling the shutdown command, no operations shall follow.
+        a shutdown command simply accepts the -s flag and shuts the platform down
+
+    Upon submission of a job, the scheduler will send back the associated ID for that job
+    which will be presented to the submitter before shutting down, regardless, if the job
+    completes or not.
+
+Known Bugs:
+    BUG 1:
+        If the submitter enters a single operation within the opchain, valid or not,
+        the worker will shutdown due to a parsing error for an out of bounds index.
+    BUG 2:
+        If the submitter enters a singular operand in the operands list, even with multiple
+        operations, the worker will correctly complete the job and the scheduler will correctly 
+        print the answer, but upon successful teardown/shutdown, a block of memory still persists 
+        because of the create_jobs() function call
+    BUG 3:
+        If a large amount of submitters successfully submit jobs, there are some instances of 
+        the worker(s) and scheduler hanging. This has shown instances of mitigation with the connection
+        of another worker, upon which all jobs and tasks are completed successfully and the answers 
+        are then presented by the scheduler. Because the work is associated with a job, all answers 
+        will be shown with their appropriate job, which is the intention of the platform. 
+        Job -> work -> answer association.
+    BUG 4:
+        Upon teardown either by the submitter or directly shutting down the scheduler, a memory issue 
+        presents itself in the destroy_jobs() function. This bug is not always present, but invalid reads 
+        and frees present themselves when one or more jobs are submitted with a single element in the 
+        operands list. If all jobs submitted have more than one operand, this memory issue is not present 
+        upon shutdown received from the submitter. However, if the scheduler is shutdown directly, an error 
+        occurs during the select() call in the main driver.
+    BUG 5:
+        submitting a job with an excessive amount of operations or if an error occurs from a job submission and 
+        a worker cannot pick it up and the user were to forcefully shut down the scheduler, a
+        segmentation fault on the scheduler will occur and shut it down.
+    BUG 6:
+        With the implementation of multithreading, there exists an API issue when calling detach to each thread.
+        The program has the chance to completely operate as intended if non of the above bugs occur, however,
+        if the scheduler is run through valgrind, the user will notice bytes allocated for each thread still 
+        persist upon teardown. Although this a pthread API instance, there does exists a way to properly free 
+        allocated memory for the threads in an outside library, however, given time constrains, I, the creator,
+        did not have the time to research this fix and implement it.
+
+    The above bugs do exists, and given time constraints, I was not properly able to fix them all according to valgring
+    output. However, simple usage should not expose these to the user and the program can operate as intended.
+
+NOTE: before submission, some bug hunting/fixing was implemented, so the examiner may not be able to recreate all 
+mentioned bugs and/or may find other bugs not yet described. Given time constraints, not every edge case may have 
+been tested.
